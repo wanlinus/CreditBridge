@@ -1,0 +1,62 @@
+{
+  "name": "cb-gateway",
+  "version": "0.4.1",
+  "private": true,
+  "type": "module",
+  "description": "Local OpenAI-compatible gateway: proxies the credits of four AI desktop platforms (WorkBuddy, Trae CN, Qoder, Loomy) behind one standard OpenAI endpoint, for DSH and any other agent.",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "node src/index.ts",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "login": "node src/login-cli.ts",
+    "test": "node test/callback.mjs && node test/credential.mjs && node test/qoder-models.mjs && node test/accounts.mjs && node test/keys.mjs && node test/model-visibility.mjs && node test/workbuddy-catalog.mjs && node test/trae-config.mjs && node test/trae-checkin.mjs && node test/trae-usage-cache.mjs && node test/usage-daily.mjs && node test/model-router.mjs && node test/model-cooldown.mjs && node test/checkin-scheduler.mjs && node test/checkin-log.mjs && node test/events.mjs && node test/login-cancel.mjs && node test/device-flow.mjs && node test/loomy-sign.mjs && node test/loomy-models.mjs && node test/loomy-usage.mjs && node test/loomy-credit.mjs && node test/deepseek-pricing.mjs && node test/qoder-window.mjs && node test/persistence.mjs && node test/trae-device.mjs && node test/channel-icons.mjs && node test/badge.mjs && node test/gateway-auth.mjs && node test/auth-deadlock.mjs && node test/openai-route.mjs && node test/e2e-http.mjs && node test/smoke-chat.mjs",
+    "test:events": "node test/events.mjs",
+    "test:checkin-scheduler": "node test/checkin-scheduler.mjs",
+    "test:checkin-log": "node test/checkin-log.mjs",
+    "test:callback": "node test/callback.mjs",
+    "test:credential": "node test/credential.mjs",
+    "test:visibility": "node test/model-visibility.mjs",
+    "test:routes": "node test/openai-route.mjs",
+    "test:http": "node test/e2e-http.mjs",
+    "test:catalog": "node test/workbuddy-catalog.mjs",
+    "test:trae-config": "node test/trae-config.mjs",
+    "test:usage": "node test/usage-daily.mjs",
+    "test:qoder": "node test/qoder-models.mjs",
+    "test:qoder-refresh": "node test/refresh-qoder.mjs --live",
+    "preflight": "node tools/preflight-dsh.mjs",
+    "test:auth": "node test/gateway-auth.mjs",
+    "test:auth-deadlock": "node test/auth-deadlock.mjs",
+    "test:router": "node test/model-router.mjs",
+    "test:accounts": "node test/accounts.mjs",
+    "smoke:chat": "node test/smoke-chat.mjs",
+    "smoke:tools": "node test/smoke-tools.mjs",
+    "test:keys": "node test/keys.mjs",
+    "test:login": "node test/login-cancel.mjs",
+    "test:model-cooldown": "node test/model-cooldown.mjs",
+    "test:persistence": "node test/persistence.mjs",
+    "test:trae-device": "node test/trae-device.mjs",
+    "test:channel-icons": "node test/channel-icons.mjs",
+    "test:badge": "node test/badge.mjs",
+    "test:loomy-models": "node test/loomy-models.mjs",
+    "test:loomy-usage": "node test/loomy-usage.mjs",
+    "test:loomy-credit": "node test/loomy-credit.mjs",
+    "test:pricing": "node test/deepseek-pricing.mjs",
+    "test:qoder-window": "node test/qoder-window.mjs",
+    "test:trae-checkin": "node test/trae-checkin.mjs",
+    "test:trae-usage-cache": "node test/trae-usage-cache.mjs",
+    "build:web": "node scripts/build-web.mjs",
+    "check:web": "node scripts/build-web.mjs --check-only",
+    "find:dead": "node tools/find-dead-code.mjs && node tools/find-dead-exports.mjs"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.6",
+    "hono": "^4.13.17"
+  }
+}

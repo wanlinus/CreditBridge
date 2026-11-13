@@ -1,0 +1,194 @@
+{
+  "source": "GET https://gateway.qoder.com.cn/algo/api/v2/model/list?Encode=1",
+  "note": "这个接口要 COSY 签名，裸 dt- 令牌调不通，所以由 CLI 签名拉取、capture-model-rates.cjs 在旁边抓包。能力来自 thinking_config（不是 is_reasoning——后者对 DeepSeek-Flash / Kimi-K3.1-Pro 是 false，但它们的 thinking_config.enabled.efforts 有档位，实际支持思考）。倍率会变，变了重抓一次再更新这份文件。",
+  "capturedAt": "2026-11-11T13:27:34.667Z",
+  "models": [
+    {
+      "key": "auto",
+      "displayName": "Auto",
+      "priceFactor": 0.5,
+      "maxInputTokens": 200000,
+      "canThink": false,
+      "canDisableThinking": false,
+      "efforts": [],
+      "defaultEffort": null,
+      "isVision": true
+    },
+    {
+      "key": "fast",
+      "displayName": "Fast",
+      "priceFactor": 0.8,
+      "maxInputTokens": 200000,
+      "canThink": false,
+      "canDisableThinking": false,
+      "efforts": [],
+      "defaultEffort": null,
+      "isVision": true
+    },
+    {
+      "key": "qmodel_latest",
+      "displayName": "Qwen4-Max-Preview",
+      "priceFactor": 0.1,
+      "maxInputTokens": 1000000,
+      "canThink": true,
+      "canDisableThinking": true,
+      "efforts": [
+        "xhigh",
+        "high",
+        "low"
+      ],
+      "defaultEffort": "xhigh",
+      "isVision": true
+    },
+    {
+      "key": "qmodel_38max",
+      "displayName": "Qwen3.8-Max",
+      "priceFactor": 0.5,
+      "maxInputTokens": 180000,
+      "canThink": true,
+      "canDisableThinking": true,
+      "efforts": [
+        "xhigh",
+        "low",
+        "medium"
+      ],
+      "defaultEffort": "medium",
+      "isVision": true
+    },
+    {
+      "key": "qfmodel",
+      "displayName": "Qwen3.8-Flash",
+      "priceFactor": 0.1,
+      "maxInputTokens": 180000,
+      "canThink": true,
+      "canDisableThinking": true,
+      "efforts": [
+        "xhigh",
+        "low",
+        "medium"
+      ],
+      "defaultEffort": "medium",
+      "isVision": true
+    },
+    {
+      "key": "dmodel",
+      "displayName": "DeepSeek-V4-Pro",
+      "priceFactor": 0.5,
+      "maxInputTokens": 96000,
+      "canThink": true,
+      "canDisableThinking": true,
+      "efforts": [
+        "high",
+        "max"
+      ],
+      "defaultEffort": "max",
+      "isVision": true
+    },
+    {
+      "key": "dfmodel",
+      "displayName": "DeepSeek-Flash",
+      "priceFactor": 0.1,
+      "maxInputTokens": 180000,
+      "canThink": true,
+      "canDisableThinking": true,
+      "efforts": [
+        "high",
+        "max",
+        "low"
+      ],
+      "defaultEffort": "high",
+      "isVision": true
+    },
+    {
+      "key": "gmodel",
+      "displayName": "GLM-5.3",
+      "priceFactor": 0.8,
+      "maxInputTokens": 180000,
+      "canThink": true,
+      "canDisableThinking": false,
+      "efforts": [
+        "high",
+        "low",
+        "max"
+      ],
+      "defaultEffort": "high",
+      "isVision": true
+    },
+    {
+      "key": "gfmodel",
+      "displayName": "GLM-5.3-Flash",
+      "priceFactor": 0.1,
+      "maxInputTokens": 1000000,
+      "canThink": true,
+      "canDisableThinking": false,
+      "efforts": [
+        "high",
+        "max"
+      ],
+      "defaultEffort": "max",
+      "isVision": true
+    },
+    {
+      "key": "kmodel_latest",
+      "displayName": "Kimi-K3.1-Pro",
+      "priceFactor": 1,
+      "maxInputTokens": 180000,
+      "canThink": true,
+      "canDisableThinking": false,
+      "efforts": [
+        "high",
+        "low",
+        "max"
+      ],
+      "defaultEffort": "high",
+      "isVision": true
+    },
+    {
+      "key": "kmodel",
+      "displayName": "Kimi-K2.8-Preview",
+      "priceFactor": 0.8,
+      "maxInputTokens": 180000,
+      "canThink": true,
+      "canDisableThinking": false,
+      "efforts": [
+        "high",
+        "low",
+        "max"
+      ],
+      "defaultEffort": "high",
+      "isVision": true
+    },
+    {
+      "key": "jmodel",
+      "displayName": "Step-5-Preview",
+      "priceFactor": 0.3,
+      "maxInputTokens": 1000000,
+      "canThink": true,
+      "canDisableThinking": true,
+      "efforts": [
+        "high",
+        "max",
+        "low"
+      ],
+      "defaultEffort": "high",
+      "isVision": true
+    },
+    {
+      "key": "mmodel",
+      "displayName": "MiniMax-M3.1-Flash",
+      "priceFactor": 0.1,
+      "maxInputTokens": 180000,
+      "canThink": true,
+      "canDisableThinking": false,
+      "efforts": [
+        "xhigh",
+        "high",
+        "low",
+        "max",
+        "medium"
+      ],
+      "defaultEffort": "xhigh",
+      "isVision": true
+    }
+  ]
+}

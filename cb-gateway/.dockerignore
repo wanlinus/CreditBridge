@@ -1,0 +1,10 @@
+node_modules
+data
+test
+tools
+.qoder-probe
+*.tgz
+*.log
+*.md
+Dockerfile
+compose.yaml
