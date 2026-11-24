@@ -20,21 +20,42 @@
 
 ### 你需要什么
 
-- **Node.js ≥ 22.18**（网关直接跑 `.ts` 源码，靠 Node 原生剥离类型，没有构建步骤）
+- **Docker**（网关以镜像方式分发，不用装 Node）
 - 四个平台各自的账号（有一个就能用）
 
 ### 第一步：起网关
 
-```bash
-git clone <本仓库>
-cd CreditBridge/cb-gateway
+镜像在 GitHub Container Registry，公开可拉：
 
-npm install
-npm run build:web      # 构建前端界面，必须先跑
-npm start              # 启动，默认 http://127.0.0.1:7801
+```bash
+docker pull ghcr.io/wanlinus/creditbridge:latest
+
+docker run -d \
+  --name cb-gateway \
+  --restart unless-stopped \
+  -p 7801:7801 \
+  -v cb-data:/app/data \
+  ghcr.io/wanlinus/creditbridge:latest
 ```
 
-看到 `listening on http://127.0.0.1:7801` 就好了。
+浏览器打开 <http://127.0.0.1:7801/login> 能出登录页就好了。
+
+**数据在 `cb-data` 这个卷里**（凭据、账号、账本、日志）。用命名卷而不是目录挂载，
+是因为容器以 uid 1000 运行，宿主机目录的权限经常对不上——命名卷没这个问题。
+
+想用本地目录（方便直接看文件）：
+
+```bash
+mkdir -p ./cb-data
+sudo chown 1000:1000 ./cb-data        # 容器里是 uid 1000
+docker run -d --name cb-gateway -p 7801:7801 -v "$PWD/cb-data:/app/data" ghcr.io/wanlinus/creditbridge:latest
+```
+
+**要让别的机器访问**，`data/config.json` 里的 `host` 必须是 `0.0.0.0`（默认就是）：
+
+```json
+{ "host": "0.0.0.0", "port": 7801 }
+```
 
 ### 第二步：改掉默认密码
 
@@ -141,26 +162,46 @@ curl http://127.0.0.1:7801/v1/chat/completions \
 
 ## 部署到别的机器（可选）
 
-单机用不着这节。想让网关跑在一台机器、DSH 在另一台，用容器：
+单机用不着这节。想在服务器上跑、DSH 在本地连过去，直接拉镜像就行：
+
+```bash
+# 在服务器上
+docker pull ghcr.io/wanlinus/creditbridge:latest
+
+mkdir -p ~/docker/cb-gateway/data
+cd ~/docker/cb-gateway
+
+cat > compose.yaml <<'EOF'
+services:
+  cb-gateway:
+    image: ghcr.io/wanlinus/creditbridge:latest
+    container_name: cb-gateway
+    restart: unless-stopped
+    ports:
+      - "7801:7801"
+      - "18801:18801"
+    volumes:
+      - ./data:/app/data
+EOF
+
+docker compose up -d
+```
+
+服务器上只有 `compose.yaml` 和 `data/`，**没有源码**。
+
+`18801` 是 Trae 登录的回调端口，见「已知限制」。
+
+### 自己构建镜像
+
+仓库带了 `.github/workflows/ci.yml`，推到 `master` 会自动构建并推 GHCR。
+要本地构建（改代码后想立刻试）：
 
 ```powershell
-# 开发机（仓库根）。需要 Docker 在跑
-cd cb-gateway && npm run build:web && cd ..
-.\cb-gateway\scripts\deploy.ps1 -Server <你的服务器地址>
+.\cb-gateway\scripts\deploy.ps1 -Server <服务器地址>
 ```
 
-脚本：`docker build` → `save` + gzip → scp → 服务器上 `load` + `compose up -d`，最后等 healthy。
-`-Server` 是**必填参数**。
-
-服务器上只有两个东西，没有源码：
-
-```
-~/docker/cb-gateway/
-├─ compose.yaml    只引用 image: cb-gateway:local，没有 build 段
-└─ data/           卷挂载：凭据、账本、日志
-```
-
-**所以服务器上不能 `docker compose build`**（没有构建上下文）。改代码只改开发机、重跑 `deploy.ps1`。
+脚本：`docker build` → `save` + gzip → scp → 服务器上 `load` + `compose up -d`。
+服务器上**不能** `docker compose build`（没有构建上下文）。
 
 两个容器相关的坑：
 
@@ -245,6 +286,8 @@ CreditBridge/
 
 ## 开发
 
+**只有改代码才需要看这节**。日常使用直接拉镜像，不用装 Node。
+
 ```bash
 cd cb-gateway
 
@@ -259,6 +302,9 @@ pnpm --dir web build:only
 npm run check        # tsc --noEmit，必须 0 error
 npm run check:web    # vue-tsc
 npm test             # 47 套，一条命令全跑
+
+# 本地起服务（改完想立刻试）
+npm start            # http://127.0.0.1:7801
 ```
 
 > **`npm test` 依赖 `web/dist`**：`test/e2e-http.mjs` 要验证静态资源能被托管。
@@ -281,7 +327,6 @@ npm test             # 47 套，一条命令全跑
 
 ```bash
 docker pull ghcr.io/wanlinus/creditbridge:latest
-docker run -d -p 7801:7801 -v /你的/data:/app/data ghcr.io/wanlinus/creditbridge:latest
 ```
 
 标签规则：`master` → `latest` + `edge`；打 `v1.2.3` 这样的 tag → `1.2.3` + `1.2` + `latest`。

@@ -41,9 +41,21 @@ qd-1/Auto
 
 ## 起服务
 
+**推荐用镜像**（不用装 Node）：
+
+```bash
+docker run -d --name cb-gateway -p 7801:7801 -v cb-data:/app/data \
+  ghcr.io/wanlinus/creditbridge:latest
+```
+
+数据在 `cb-data` 卷里。要让别的机器访问，`data/config.json` 的 `host` 得是 `0.0.0.0`（镜像默认就是）。
+
+**改代码时本地跑**：
+
 ```bash
 cd cb-gateway
 npm install          # 只有 hono + @hono/node-server 两个运行时依赖
+npm run build:web    # 前端产物，必须先构建
 node src/index.ts    # 或 npm start
 ```
 
@@ -57,7 +69,7 @@ $env:HTTPS_PROXY='http://127.0.0.1:7897'; $env:HTTP_PROXY='http://127.0.0.1:7897
 
 第一次启动会在 `gateway_credential` 表里建默认账号 `admin` / `admin`——**改密之前除 `/api/login` `/api/logout` `/api/password` 外一律 403**（一律 JSON）。前端产物（壳、`/assets/*`）不受影响，否则登录页自己都加载不出来。
 
-容器部署用同目录的 `Dockerfile` + `compose.yaml`，见根 README 的「部署五步」。
+容器部署用同目录的 `Dockerfile` + `compose.yaml`。CI 会自动构建镜像推 GHCR（`.github/workflows/ci.yml`）。
 
 ---
 
@@ -67,7 +79,7 @@ $env:HTTPS_PROXY='http://127.0.0.1:7897'; $env:HTTP_PROXY='http://127.0.0.1:7897
 
 管理台 `/accounts` **按通道分组**：每个通道一块，块里是它的账号，块头是通道名 + `idPrefix` + 这个通道的能力（几个号、支不支持自助登录），块尾是**这个通道自己的「添加账号」**。
 
-为什么这么排：数据是两级的（通道 → 账号），而登录这个动作发生在通道上——你想的是「给 WorkBuddy 加一个号」，不是「添加一个账号再选它属于谁」。所以「能加几个」「能不能登录」写在通道那一行上，加满时按钮直接禁掉并说明原因（Qoder 只支持一个号，要换号用那个号的「重新登录」），没登录过的通道也照样有一块，否则你看不到「这里可以加一个」。
+为什么这么排：数据是两级的（通道 → 账号），而登录这个动作发生在通道上——你想的是「给 WorkBuddy 加一个号」，不是「添加一个账号再选它属于谁」。所以「能加几个」「能不能登录」写在通道那一行上，加满时按钮直接禁掉并说明原因（`multiAccount: false` 的通道只能挂一个号，目前四个都允许挂多个），没登录过的通道也照样有一块，否则你看不到「这里可以加一个」。
 
 每个账号：
 
