@@ -28,8 +28,8 @@ export const traeChannel = defineChannel({
   // `appVersion` = `appVersion`（账号接口的 `x-app-version`）。桌面端还在往前更新，不能写死，升级后回来同步。
   identity: {
     clientVersion: '1.107.1',
-    channelVersion: '2.3.102035',
-    appVersion: '3.4.17',
+    channelVersion: '2.3.106768',
+    appVersion: '3.4.24',
   },
 
   /**

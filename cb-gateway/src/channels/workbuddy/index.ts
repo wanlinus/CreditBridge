@@ -29,9 +29,9 @@ export const workbuddyChannel = defineChannel({
   // `channelVersion` = CLI 版本（UA 里的 CLI/x）；`ideVersion` = X-IDE-Version 头。
   // 客户端升级后改这里，**只有这一处**。
   identity: {
-    clientVersion: '5.9.3',
-    channelVersion: '2.165.0',
-    ideVersion: '5.9.3',
+    clientVersion: '5.11.3',
+    channelVersion: '43806934',
+    ideVersion: '5.11.3',
   },
 
   /** 读官方 `version.json` 的 `win32-x64-system.stable`（网关报 Windows 头）。 */

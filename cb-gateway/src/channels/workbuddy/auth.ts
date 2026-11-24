@@ -22,7 +22,7 @@ function log(...args: unknown[]) {
  * 报给上游的客户端版本串。**不在这里写死**：版本号属于通道自述（`workbuddyChannel.identity`），
  * 启动时由 `configureWorkBuddy()` 注入；这里的默认值只兜 `npm run login -- workbuddy` 这类场景。
  */
-const versions = { clientVersion: '5.9.3', channelVersion: '2.165.0', ideVersion: '5.9.3' };
+const versions = { clientVersion: '5.11.3', channelVersion: '43806934', ideVersion: '5.11.3' };
 
 /** 更新源（`download.codebuddy.cn/workbuddy/saas/version.json`，8 个平台 × stable/gray）。 */
 const VERSION_URL = 'https://download.codebuddy.cn/workbuddy/saas/version.json';

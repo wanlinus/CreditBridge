@@ -33,7 +33,7 @@ const CLIENT_ID = 'e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb';
  *
  * 可自动更新：见 `fetchIdentity()`（读 electron-updater 的 `latest.yml`）。
  */
-export const QODER_VERSION = '0.5.17';
+export const QODER_VERSION = '0.5.18';
 
 /** 桌面端的更新源（`resources/app-update.yml` 的 `url`，Windows 版是 `static.` 域）。 */
 export const QODER_UPDATE_FEED = 'https://static.qoder.com.cn/qoder-app/releases';

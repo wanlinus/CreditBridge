@@ -23,9 +23,9 @@ export const TRAE_CHAT_BASE = 'https://trae-api-cn.mchost.guru';
  * 这里只留默认值兜 `npm run login` 这类没走 `configure()` 的场景。`clientVersion` 写错会得到 401 `20405`。
  */
 export let TRAE_CLIENT_VERSION = '1.107.1';
-export let TRAE_BUILD_VERSION = '2.3.100185';
+export let TRAE_BUILD_VERSION = '2.3.106768';
 /** 账号接口（签到/额度）的 `x-app-version` 头，product.json 的 `appVersion`——和 `clientVersion` 不是一个字段。 */
-export let TRAE_APP_VERSION = '3.4.17';
+export let TRAE_APP_VERSION = '3.4.24';
 
 /** Trae 的更新 manifest 接口（官网 SPA 用它，匿名可访问）。 */
 const VERSION_URL = 'https://api.trae.cn/icube/api/v1/native/version/trae/cn/latest';
