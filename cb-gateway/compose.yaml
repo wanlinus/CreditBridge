@@ -46,10 +46,10 @@ services:
       # 隧道只在登录那一次需要；凭据落盘后网关靠 refresh 自己续期。
       QB_TRAE_CALLBACK_BASE: "http://127.0.0.1:18801"
     volumes:
-      # data/ 里有：auth/ 凭据、state/ 签到记录、logs/、usage.jsonl 账本、
-      # cli/ 下载下来的 Qoder CLI（约 34MB）。全部要持久化。
+      # data/ 里有：config.json、gateway.db（凭据 / 账号 / 账本 / 签到）、
+      # logs/、state/（模型目录缓存）。全部要持久化。
       - ./data:/app/data
-    # Qoder 的 CLI 常驻进程峰值约 700MB，静息约 290MB。留一倍余量，
+    # 实测静息约 190 MB（四个通道、6 个账号、无活跃对话）。留 8 倍余量，
     # 超了让它 OOM 重启，而不是拖垮整台机器。
     mem_limit: 1536m
     healthcheck:

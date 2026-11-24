@@ -395,6 +395,6 @@ docker run -d -p 7801:7801 -v cb-data:/app/data ghcr.io/wanlinus/creditbridge:la
 - **Trae 能到 100 万上下文，前提是模型名发对**：对话请求必须在**顶层**发 `config_name` + 带变体后缀的 `model_name`（`deepseek-v4.1-flash__max`）。只发 `model` 的话服务端会忽略模型、落到账号默认模型，那时 23 万 token 就被 `4026` 拒——看起来像「上限只有 20 万」，其实是从没选到那个模型。改对之后实测：49.3 万 token 正常返回，26 万走 `/v1/chat/completions` 端到端 200。网关现在一律用 `__max` 变体发，`/v1/models` 报 `context_length: 1000000`、`max_output_tokens: 64000`，`⚙` 的档位按 50% / 75% / 100% 给。
 - **Trae 的大上下文很贵**：实测约 **45 积分 / 100 万 prompt token**（1.5M token 花了 68.7 积分）。WorkBuddy 便宜一个数量级，长上下文优先走 `wb-1/*`。
 - **Trae 的配置读的是 `solo_agent`，对话发的是 `chat_v3`**：两份模型表不一样（`solo_agent` 说 200000/32000，`chat_v3` 说 116000/16000），但实测两个数都不是硬闸门（26 万 token、32000 输出都被接受）。故意读更宽的那份，别"顺手统一"——按 `chat_v3` 报会让 DSH 提前压缩。
-- **Qoder 的模型名单和账号无关**（CLI 那侧一份），所以 `qd-1/*` 换号不会换名单。
+- **Qoder 的模型名单和账号无关**（`/algo/api/v2/model/list` 一份，6 小时缓存），所以 `qd-1/*` 换号不会换名单。
 - **模型设置在网关，不在 DSH**：上下文窗口、最大输出、缺省思考档都存在 `data/config.json` 的 `modelSettings` 里，在 `/models` 页改。插件不再提供 ⚙ 下拉，也不再有 `127.0.0.1:7802/model-config`——它只负责把 `/api/models` 照抄进 profile。改完仍需重启 DSH（profile 只在启动时读一次）。
 - **模型数量随账号数线性增长**：2 个号 = 2 套 id。加号之后 DSH 那边由插件自动同步，不用手动探测。

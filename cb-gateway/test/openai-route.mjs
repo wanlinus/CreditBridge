@@ -1,8 +1,7 @@
 // v2 路由自测：认证闸、强制改密闸、`/v1/models` 的账号展开、`/v1/chat/completions`
 // 的流式/非流式两条分支、以及「账号状态机只改状态、不换号」。
 //
-// 跑在临时数据目录里（QB_DATA_DIR），不碰真实凭据；**通道换成假实现**，不下载
-// Qoder CLI、也不打任何上游。
+// 跑在临时数据目录里（QB_DATA_DIR），不碰真实凭据；**通道换成假实现**，不打任何上游。
 //
 // 跑：node test/openai-route.mjs
 import fs from 'node:fs';

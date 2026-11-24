@@ -26,7 +26,7 @@ CreditBridge 把几个 AI 客户端账号里的额度，变成 DSH 里可直接�
 
 ## 安装
 
-前置：**Windows**；**DSH 已安装并至少启动过一次**（安装脚本借用 DSH 自带的 Node + pnpm，找不到时要自己装 Node.js 22+ 和 pnpm，网关是 TS 直跑，Node 必须 ≥ 22.18）；各通道账号由你装完后在**网关网页** `/accounts` 自己登录获得（WorkBuddy / Trae / Loomy 走浏览器或表单授权；Qoder 需要 CLI 登录态，网关会自己下载 CLI 并引导授权）。
+前置：**Windows**；**DSH 已安装并至少启动过一次**（安装脚本借用 DSH 自带的 Node + pnpm，找不到时要自己装 Node.js 22+ 和 pnpm，网关是 TS 直跑，Node 必须 ≥ 22.18）；各通道账号由你装完后在**网关网页** `/accounts` 自己登录获得（WorkBuddy / Trae / Loomy 走浏览器或表单授权；Qoder 走设备码授权（一次）。
 
 解压到任意目录，**路径不要有中文和空格**。zip 里是一个 `CreditBridgeForDSH` 文件夹，进去运行 `powershell -ExecutionPolicy Bypass -File .\install.ps1`；脚本按顺序做：
 

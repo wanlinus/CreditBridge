@@ -76,7 +76,7 @@ v2 之后它只有一个对外入口：`/v1/*`（OpenAI 兼容）+ `/api/*` 和�
   │                          （core/router.ts、core/accounts.ts）
   ├─ 适配器  channels/*       拿 account.credential 打上游，把回答翻译成 OpenAI 形状
   │                          不知道「这个通道挂了几个号」
-  └─ 上游    copilot.tencent.com / trae-api-cn / gateway.qoder.com.cn + 本地 CLI
+  └─ 上游    copilot.tencent.com / trae-api-cn / gateway.qoder.com.cn / loomyad.xunfei.cn
              loomyad.xunfei.cn
 ```
 
@@ -415,7 +415,7 @@ channels[]               accountsOf(channel)          channel.modelsOf(account) 
 
 **两个筛子，语义不同**：`isListed`（通道总闸）和 `filterModels`（逐模型清单）。都在 `channel_visibility` 表里（v4 起进库），**改完立刻生效**，但**只影响列表、不影响对话**——被隐藏的模型仍可直接调用。
 
-**每个账号是并发取的**（图上画成串行是为了好读）。这个接口被插件每 15 秒轮询一次，而 `modelsOf()` 可能打上游（WorkBuddy 的目录、Qoder 起 CLI）。串行 await 的话 N 个账号就是 N 倍等待，插件那边有超时——账号一多就会超时拿到空列表，表现成「模型全没了」，过一轮又回来。拼回去时仍按原顺序，因为那是用户看到的顺序。
+**每个账号是并发取的**（图上画成串行是为了好读）。这个接口被插件每 15 秒轮询一次，而 `modelsOf()` 可能打上游（WorkBuddy 的目录、Qoder 的模型名单）。串行 await 的话 N 个账号就是 N 倍等待，插件那边有超时——账号一多就会超时拿到空列表，表现成「模型全没了」，过一轮又回来。拼回去时仍按原顺序，因为那是用户看到的顺序。
 
 **「关掉了」和「取不到」在响应里都表现为 0 个模型**，但语义相反。要分开只能看 `/api/health` 的 `listed` 字段。
 
