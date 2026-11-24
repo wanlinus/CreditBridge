@@ -41,7 +41,7 @@ function parseUpstreamTime(raw: any): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-export async function getWorkBuddyUsage(account: Account): Promise<Credits> {
+export async function getWorkBuddyCredits(account: Account): Promise<Credits> {
   const credential = await usableCredential(account, refreshWorkBuddyCredential);
   const now = new Date();
   const fmt = (date: any) =>

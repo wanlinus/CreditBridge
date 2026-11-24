@@ -6,11 +6,11 @@ import type { Account, AccountProfile, AppConfig } from '../../types.ts';
 import { defineChannel } from '../types.ts';
 import { configureWorkBuddyIdentity, fetchWorkBuddyIdentity, revokeWorkBuddySession, setLogger } from './auth.ts';
 import { runWorkBuddyLogin } from './login.ts';
-import { buildModelList, fetchWorkBuddyCatalog, setWorkBuddyModelsLogger } from './models.ts';
+import { buildModelList, fetchWorkBuddyModels, setWorkBuddyModelsLogger } from './models.ts';
 import { chatWorkBuddy, setWorkBuddyUpstreamLogger } from './upstream.ts';
 import {
   claimCheckin,
-  getWorkBuddyUsage,
+  getWorkBuddyCredits,
   readLastCheckin,
   setWorkBuddyUsageLogger,
 } from './usage.ts';
@@ -56,22 +56,22 @@ export const workbuddyChannel = defineChannel({
 
   /** 凭据还能不能用：拿余额接口试一次，顺便确认 uid。 */
   async probe(account: Account): Promise<AccountProfile> {
-    const credits = await getWorkBuddyUsage(account);
+    const credits = await getWorkBuddyCredits(account);
     return credits.account ?? {};
   },
 
   async modelsOf(account) {
-    const models = await fetchWorkBuddyCatalog(account);
+    const models = await fetchWorkBuddyModels(account);
     return buildModelList(models, config.defaultContextWindow, config.defaultMaxTokens);
   },
 
   /** 上游原始目录（保留 `lengths` / `reasoning` / `credits`），给上下文窗口编辑器用。契约里的可选部分。 */
   async catalogOf(account) {
-    return fetchWorkBuddyCatalog(account);
+    return fetchWorkBuddyModels(account);
   },
 
   async creditsOf(account) {
-    return getWorkBuddyUsage(account);
+    return getWorkBuddyCredits(account);
   },
 
   async checkinStatusOf() {

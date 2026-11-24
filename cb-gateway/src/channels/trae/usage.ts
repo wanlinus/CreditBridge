@@ -102,7 +102,7 @@ const usageInFlight = new Map<string, Promise<any>>();
 /**
  * 积分快照。`remaining` 是算出来的、不是上游给的：Trae 只报 `total_amount` 和 `consumed_amount`。
  */
-export async function getTraeUsage(account: Account, options: { force?: boolean } = {}): Promise<Credits> {
+export async function getTraeCredits(account: Account, options: { force?: boolean } = {}): Promise<Credits> {
   const cached = usageCache.get(account.id);
   if (!options.force && cached && cached.value && Date.now() - cached.at < USAGE_TTL_MS) return cached.value;
   const running = usageInFlight.get(account.id);

@@ -10,7 +10,7 @@ import { loginLoopback as traeLoginLoopback, runTraeLogin } from './login.ts';
 import {
   claimCheckin,
   getCheckinStatus,
-  getTraeUsage,
+  getTraeCredits,
   readLastCheckin,
   setTraeUsageLogger,
 } from './usage.ts';
@@ -54,7 +54,7 @@ export const traeChannel = defineChannel({
   },
 
   async creditsOf(account) {
-    const usage: any = await getTraeUsage(account);
+    const usage: any = await getTraeCredits(account);
     return {
       ...usage,
       totalRemain: usage.remaining,

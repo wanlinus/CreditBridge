@@ -152,7 +152,7 @@ export function parseTraeConfig(doc: any): TraeModelConfig[] {
  * （配置接口挂了或模型下架），调用方应退回不带 `config_name`/`model_name` 的老形状。
  */
 export async function traeVariantModelName(credential: any, modelId: string): Promise<string | null> {
-  const models = await fetchTraeModelConfig(credential);
+  const models = await fetchTraeModels(credential);
   const model = models.find((item) => item.id === modelId);
   if (!model) return null;
   return model.maxModelName || model.devModelName || null;
@@ -161,7 +161,7 @@ export async function traeVariantModelName(credential: any, modelId: string): Pr
 let cache: { at: number; token: string; models: TraeModelConfig[] } = { at: 0, token: '', models: [] };
 
 /** 拉一次模型配置（带 10 分钟缓存）。失败直接抛——上层会跳过这个账号并记原因，别退回一份会过期的本地快照。 */
-export async function fetchTraeModelConfig(credential: any, force = false): Promise<TraeModelConfig[]> {
+export async function fetchTraeModels(credential: any, force = false): Promise<TraeModelConfig[]> {
   const token = typeof credential?.token === 'string' ? credential.token.slice(-12) : '';
   if (!force && cache.models.length > 0 && cache.token === token && Date.now() - cache.at < CONFIG_TTL_MS) {
     return cache.models;
@@ -191,7 +191,7 @@ export async function fetchTraeModelConfig(credential: any, force = false): Prom
  * 上游原始目录，给 `/models` 页的上下文窗口编辑器用。档位按 **Max 变体**给、和 `traeModelList()` 同源（都走 `effectiveLimits`）。
  */
 export async function traeCatalog(account: Account): Promise<CatalogModel[]> {
-  const models = await fetchTraeModelConfig(account.credential);
+  const models = await fetchTraeModels(account.credential);
   return models.map((model) => {
     const { contextWindow, maxTokens } = effectiveLimits(model);
     return {
@@ -217,7 +217,7 @@ function withRateSuffix(name: string, rate: number | null) {
  * 模型表，它错的那一刻比「没有模型」更危险——用户会选到已下架或能力报错的模型，而且不报错、只静默跑坏。
  */
 export async function traeModelList(account: Account): Promise<ModelInfo[]> {
-  const models = await fetchTraeModelConfig(account.credential);
+  const models = await fetchTraeModels(account.credential);
   return models.map((model) => {
     const { hasMax, contextWindow, maxTokens } = effectiveLimits(model);
     const contextEstimated = model.contextEstimated === true && !(hasMax && model.maxContext);

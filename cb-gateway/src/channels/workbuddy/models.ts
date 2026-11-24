@@ -58,7 +58,7 @@ export function selectorOrder(data: any): string[] | null {
   return [...presets, ...agentIds];
 }
 
-/** 上游目录项 → `CatalogModel`。字段名映射的理由见下面 `fetchWorkBuddyCatalog`。 */
+/** 上游目录项 → `CatalogModel`。字段名映射的理由见下面 `fetchWorkBuddyModels`。 */
 function toCatalogModel(model: any): CatalogModel & { credits?: string } {
   return {
     id: model.id,
@@ -91,7 +91,7 @@ function toCatalogModel(model: any): CatalogModel & { credits?: string } {
  * 上游原始目录 = 客户端选择器会列出的那些（见 `selectorOrder`）。`lengths.options` 是客户端那个
  * 选择器的数据（provider 真正接受的档位尺寸），不是上限的某个比例——没有这个字段的模型根本调不了窗口。
  */
-export async function fetchWorkBuddyCatalog(account: Account, force = false): Promise<CatalogModel[]> {
+export async function fetchWorkBuddyModels(account: Account, force = false): Promise<CatalogModel[]> {
   const cached = catalogCache.get(account.id);
   if (!force && cached && cached.models.length > 0 && Date.now() - cached.at < CATALOG_TTL_MS) return cached.models;
   // 取目录也要用新鲜凭据：放了一夜没动的号，token 早过期了。
