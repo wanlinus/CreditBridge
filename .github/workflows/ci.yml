@@ -27,8 +27,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # 测试里有一些会起本地服务器（e2e-http 用 7899），CI 环境干净，不用特别处理。
-  # 这个变量让 Node 别输出实验性特性的警告，日志干净些。
+  # 显式钉住 UTC。runner 默认就是 UTC，写出来是为了让「本地跑 vs CI 跑」的差异
+  # 一眼可见——2026-11-25 就是本地 UTC+8、CI UTC，`isPeakHour` 按本地时间判断
+  # 导致 15 项失败。现在代码里显式按 Asia/Shanghai 换算，这个变量只是防止将来
+  # 有人在 workflow 里设了 TZ 又踩一遍。
+  TZ: UTC
   NODE_NO_WARNINGS: '1'
 
 jobs:

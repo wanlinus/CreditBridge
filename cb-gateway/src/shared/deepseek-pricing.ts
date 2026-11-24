@@ -53,17 +53,25 @@ export const DEFAULT_PRICING_MODEL = 'deepseek-flash';
  * 规则（官方原文）：北京时间周一至周五 9:00-12:00、14:00-18:00。
  * 区间左闭右开——12:00 整已经不算高峰，18:00 整亦然。
  *
- * **按进程本地时间判断**，因为容器和宿主机都是 CST（`docker exec date` 已验证过）。
- * 如果哪天部署到 UTC 的机器上，这里会错——那时应该显式转成 Asia/Shanghai，
- * 但那是一个具体的部署约束，不是现在要提前付的复杂度。
+ * **「北京时间」是业务规则，不是运行环境属性**，所以这里显式按 `Asia/Shanghai`
+ * 换算，不看进程的 `TZ`。2026-11-25 踩到的：本地是 UTC+8、GitHub Actions 是 UTC，
+ * 按本地时间判断会让同一批数据在 CI 里算错 8 小时（峰谷全反），
+ * `test:deepseek-pricing` 59 项里失败 15 项。
  *
  * 法定节假日的偏差见文件头。
  */
 export function isPeakHour(at: number = Date.now()): boolean {
-  const d = new Date(at);
-  const day = d.getDay(); // 0 = 周日, 6 = 周六
-  if (day === 0 || day === 6) return false;
-  const hour = d.getHours();
+  // 用 Intl 拿北京时间的星期和小时，不依赖进程 TZ。
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    weekday: 'short',
+    hour: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(at));
+  const weekday = parts.find((p) => p.type === 'weekday')?.value ?? '';
+  if (weekday === 'Sat' || weekday === 'Sun') return false;
+  // `hour12: false` 在午夜会给出 "24"，统一成 0。
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? '0') % 24;
   return (hour >= 9 && hour < 12) || (hour >= 14 && hour < 18);
 }
 
