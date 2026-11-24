@@ -58,31 +58,35 @@ try {
 check('深层路径也能写（不该抛）', threw, false);
 check('写成功后目录里没有残留 tmp', fs.readdirSync(path.join(blocked, 'sub')).filter((n) => n.includes('.tmp-')).length, 0);
 
-// ---- 2. `config.json` 只有一个写入口，而且只管那三项 ----
+// ---- 2. `config.json` 只有一个写入口 ----
 //
 // 2026-11-11 那个 bug 是「可见性」和「签到时间」各写一遍 `config.json`，谁后写谁赢，
 // 于是保存勾选之后再改签到时间，被隐藏的模型全部冒回来。
 //
-// v4 之后这条**结构性消失**了：可见性和模型设置进了库，`config.json` 只剩
-// host / port / checkinTime。所以这里钉两件事：① 写可见性不碰 `config.json`；
-// ② 改签到时间不会丢掉用户手写的键。
+// v4 之后可见性和模型设置进了库，这条**结构性消失**了。这里钉三件事：
+// ① 写可见性不碰 `config.json`；② 改签到时间不会丢掉用户手写的键；
+// ③ `host` / `port` 不写回文件（只认 `QB_HOST` / `QB_PORT`，见 config.ts 的 FILE_KEYS）。
 console.log('\n--- 2. config.json 单一写入口 ---');
 const configPath = path.join(tempData, 'config.json');
-fs.writeFileSync(configPath, JSON.stringify({ host: '0.0.0.0', port: 7801 }, null, 2));
+fs.writeFileSync(
+  configPath,
+  JSON.stringify({ host: '0.0.0.0', port: 7801, defaultContextWindow: 111000 }, null, 2),
+);
 
 vis.setVisibleFor('wb', ['hy4free']);
 vis.setListed('tr', false);
 let doc = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-check('写可见性不碰 config.json', doc, { host: '0.0.0.0', port: 7801 });
+check('写可见性不碰 config.json', doc, { host: '0.0.0.0', port: 7801, defaultContextWindow: 111000 });
 check('可见性确实写进库了', vis.visibleFor('wb'), ['hy4free']);
 check('总闸确实写进库了', vis.isListed('tr'), false);
 
-// 改签到时间：只动 checkinTime，手写的 host/port 必须原样留着。
+// 改签到时间：只动 checkinTime，其余手写的键必须原样留着。
 configMod.updateConfig({ checkinTime: '08:30' });
 doc = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 check('签到时间写进去了', doc.checkinTime, '08:30');
-check('手写的 host 保留', doc.host, '0.0.0.0');
-check('手写的 port 保留', doc.port, 7801);
+check('手写的 defaultContextWindow 保留', doc.defaultContextWindow, 111000);
+check('host 不写回文件', 'host' in doc, false);
+check('port 不写回文件', 'port' in doc, false);
 check('改签到时间不动可见性', vis.visibleFor('wb'), ['hy4free']);
 
 // 反过来：先改签到时间，再写可见性，两边都不该互相覆盖。

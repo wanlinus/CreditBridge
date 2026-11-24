@@ -193,7 +193,7 @@ Loomy 没有签到（上游没这接口），其余三个都有。
 
 ```
 data/
-├─ config.json              网关配置（只有 host/port/checkinTime 三项），手改入口
+├─ config.json              网关配置（checkinTime / 两个默认值 / verbose），手改入口
 ├─ gateway.db               库：账本 / 账号 / key / 密码 / 签到 / 模型设置 / 可见性
 │                            （SQLite，WAL 模式；**备份要连 -wal 一起拷**）
 ├─ state/qoder-models.json   Qoder 模型名单缓存（6 小时 TTL，删了会自动重取）

@@ -51,7 +51,7 @@ sudo chown 1000:1000 ./cb-data        # 容器里是 uid 1000
 docker run -d --name cb-gateway -p 7801:7801 -v "$PWD/cb-data:/app/data" ghcr.io/wanlinus/creditbridge:latest
 ```
 
-**要让别的机器访问**，`data/config.json` 里的 `host` 必须是 `0.0.0.0`（默认就是）：
+**要让别的机器访问**，容器必须监听所有网卡（`compose.yaml` 里已经给了 `QB_HOST=0.0.0.0`）：
 
 ```json
 { "host": "0.0.0.0", "port": 7801 }
@@ -214,7 +214,7 @@ docker compose pull && docker compose up -d
 
 两个容器相关的坑：
 
-- `data/config.json` 里 `host` 必须是 `0.0.0.0`，否则容器只听环回、端口映射打不进来
+- 容器必须监听 `0.0.0.0`（`compose.yaml` 的 `QB_HOST`），否则只听环回、端口映射打不进来
 - healthcheck 探的是公开页 `/login`；探 `/api/health` 会因 401 一直 unhealthy
 
 ---

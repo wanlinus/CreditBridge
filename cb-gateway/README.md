@@ -48,7 +48,7 @@ docker run -d --name cb-gateway -p 7801:7801 -v cb-data:/app/data \
   ghcr.io/wanlinus/creditbridge:latest
 ```
 
-数据在 `cb-data` 卷里。要让别的机器访问，`data/config.json` 的 `host` 得是 `0.0.0.0`（镜像默认就是）。
+数据在 `cb-data` 卷里。要让别的机器访问，容器必须监听 `0.0.0.0`——`compose.yaml` 里已经给了 `QB_HOST=0.0.0.0`。
 
 **改代码时本地跑**：
 
@@ -59,7 +59,7 @@ npm run build:web    # 前端产物，必须先构建
 node src/index.ts    # 或 npm start
 ```
 
-配置在 `data/config.json`（`host` / `port` / `checkinTime`）。`host` / `port` 只在启动时读一次；`checkinTime`（每天签到时间）在 `/settings` 改、写回 config.json 并原地生效。**模型可见性和模型设置不在这个文件里**——它们在 `channel_visibility` / `model_setting` 两张表（`data/gateway.db`），改完立刻生效、不用重启。
+监听地址只认 `QB_HOST` / `QB_PORT` 环境变量（容器里靠 `compose.yaml` 给），**不在 `config.json` 里**。`config.json` 只剩 `checkinTime` / `defaultContextWindow` / `defaultMaxTokens` / `verbose` 四项；`checkinTime`（每天签到时间）在 `/settings` 改、写回 config.json 并原地生效。**模型可见性和模型设置不在这个文件里**——它们在 `channel_visibility` / `model_setting` 两张表（`data/gateway.db`），改完立刻生效、不用重启。
 
 依赖安装与容器构建需要能访问 npm registry。开发机走代理：
 
@@ -291,7 +291,7 @@ curl -H "Authorization: Bearer sk-…" http://192.168.1.100:7801/api/models/visi
 
 ```
 data/
-├─ config.json                 host / port / checkinTime（只有这三项，手改入口）
+├─ config.json                 checkinTime / 两个默认值 / verbose（手改入口；host、port 走环境变量）
 ├─ gateway.db                  库：账本 / 账号 / key / 密码 / 签到 / 模型设置 / 可见性（WAL 模式）
 ├─ state/qoder-models.json      Qoder 模型名单缓存（6 小时 TTL，删了会自动重取）
 ├─ state/trae-identity.json    Trae 的机器级设备身份

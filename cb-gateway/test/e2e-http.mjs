@@ -16,11 +16,11 @@ import path from "node:path";
 
 const tempData = fs.mkdtempSync(path.join(os.tmpdir(), "cb-e2e-"));
 process.env.QB_DATA_DIR = tempData;
+// host/port 只认环境变量（config.json 里那两个键会被忽略，见 src/config.ts 的 FILE_KEYS）。
+process.env.QB_HOST = "127.0.0.1";
+process.env.QB_PORT = "7899";
 fs.mkdirSync(path.join(tempData, "auth"), { recursive: true });
-fs.writeFileSync(
-  path.join(tempData, "config.json"),
-  JSON.stringify({ host: "127.0.0.1", port: 7899, verbose: false }, null, 2),
-);
+fs.writeFileSync(path.join(tempData, "config.json"), JSON.stringify({ verbose: false }, null, 2));
 
 const auth = await import("../src/shared/gateway-auth.ts");
 const keys = await import("../src/core/keys.ts");

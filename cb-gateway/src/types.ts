@@ -7,6 +7,8 @@ export interface AppConfig {
   defaultContextWindow: number;
   defaultMaxTokens: number;
   verbose: boolean;
+  /** 每天定时签到的时间点，`HH:MM` 本地时间。 */
+  checkinTime: string;
 }
 
 /** 通道自述的客户端身份，报给上游的版本号串。必填：上游拿它当门禁，写死会烂，漏了类型检查就报错。 */

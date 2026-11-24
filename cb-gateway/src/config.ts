@@ -1,10 +1,10 @@
 // 配置加载与**唯一的写入口**。`data/config.json` 可选、用户可手改，缺键就用默认值。
-// 这里只剩三项（`host` / `port` / `checkinTime`）：可见性和模型设置已经进库（改完立刻生效），这三项改完得重启。
 // **一个文件只能有一个写入口**：早先 `model-visibility.ts` 也现读现写，两个模块各做 read-modify-write，谁后写谁赢
 // 且不报错——保存可见性后再改签到时间，可见性整段消失，被隐藏的模型全部重新冒出来。
 
 import fs from 'node:fs';
 import path from 'node:path';
+import type { AppConfig } from './types.ts';
 import { DATA_DIR } from './shared/paths.ts';
 import { writeFileAtomic } from './shared/atomic-write.ts';
 
@@ -24,6 +24,12 @@ const DEFAULTS = {
   checkinTime: '10:05',
 };
 
+/**
+ * 允许从 `config.json` 读的键。**`host` / `port` 故意不在其中**：容器部署时那个文件在卷里、
+ * 镜像无法预设，靠它配置等于「我这边好好的、别人拉镜像起不来」。这两个只认 `QB_HOST` / `QB_PORT`。
+ */
+const FILE_KEYS = ['checkinTime', 'defaultContextWindow', 'defaultMaxTokens', 'verbose'] as const;
+
 export type ConfigDoc = Record<string, any>;
 
 function isPlainObject(value: unknown): value is ConfigDoc {
@@ -41,12 +47,17 @@ export function readConfigDoc(): ConfigDoc {
 }
 
 /**
- * 环境变量覆盖 `config.json`。容器部署时用 `QB_HOST=0.0.0.0` 指定监听地址，
- * 不用手改 `data/config.json`——那个文件在卷里，镜像无法预设。
- * 优先级：环境变量 > config.json > DEFAULTS。
+ * 生效配置。优先级：`QB_HOST` / `QB_PORT` 环境变量 > `config.json`（仅 `FILE_KEYS`）> 内置默认值。
+ *
+ * `config.json` 里如果还留着 `host` / `port`，**会被忽略**——不报错，因为那是历史残留，
+ * 让人起来比报错更有用。
  */
-function loadConfig() {
-  const merged = { ...DEFAULTS, ...readConfigDoc() };
+function loadConfig(): AppConfig {
+  const doc = readConfigDoc();
+  const merged = { ...DEFAULTS };
+  for (const key of FILE_KEYS) {
+    if (doc[key] !== undefined) (merged as Record<string, unknown>)[key] = doc[key];
+  }
   const envHost = (process.env.QB_HOST || '').trim();
   if (envHost) merged.host = envHost;
   const envPort = Number(process.env.QB_PORT);
@@ -61,6 +72,9 @@ export const config = loadConfig();
 export function mutateConfig(mutator: (doc: ConfigDoc) => void): void {
   const doc = readConfigDoc();
   mutator(doc);
+  // `host` / `port` 只认环境变量，不写回文件：写回去会让人以为改那个文件有用。
+  delete doc.host;
+  delete doc.port;
   writeFileAtomic(CONFIG_PATH, `${JSON.stringify(doc, null, 2)}\n`);
 }
 
