@@ -277,6 +277,7 @@ CreditBridge/
 - [网关架构](cb-gateway/ARCHITECTURE.md) — 组件、数据流、`Channel` 契约、不变量
 - [网关 API](cb-gateway/API.md) — 每条路径的请求/响应形状
 - [插件 README](cb-dsh/README.md) — 配置向导、登录回调转发、模型同步
+- [添加一个通道](docs/adding-a-channel.md) — 想接入新上游时看这个
 - [AGENTS.md](AGENTS.md) — 改代码前的约定（架构原则、平台坑、提交规范）
 
 > `private/` 不在公开仓库里。源码注释里 `private/docs/xxx.md` 的引用指向作者本地的笔记，

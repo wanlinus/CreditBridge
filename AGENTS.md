@@ -25,6 +25,7 @@
 |---|---|---|
 | [`README.md`](README.md) | **用户手册**：怎么装、怎么用、排错 | 第一次用 |
 | `AGENTS.md` | 本文件：改代码前的约定 | 动手改代码前 |
+| [`docs/adding-a-channel.md`](docs/adding-a-channel.md) | **加通道的完整指南**：要动的文件、`Channel` 契约、三条易错点、验证清单、踩过的坑 | 接入新上游 |
 | [`cb-gateway/README.md`](cb-gateway/README.md) | 网关：起服务、认证、路由清单、排错 | 部署、运维、排查 |
 | [`cb-gateway/ARCHITECTURE.md`](cb-gateway/ARCHITECTURE.md) | 网关内部：组件、数据流五条链路、`Channel` 契约、不变量 | 改网关代码前 |
 | [`cb-gateway/API.md`](cb-gateway/API.md) | 每条路径的请求/响应形状、SSE 帧序列 | 调接口、改响应形状 |
