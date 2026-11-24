@@ -9,12 +9,12 @@ import type { Account, ChatOutcome, ChatRequest } from '../../types.ts';
 import { usableCredential } from '../../core/accounts.ts';
 import { UpstreamError, retryAfterAt } from '../../shared/upstream-error.ts';
 import { asCredentialError } from '../../shared/credential-error.ts';
-import { TRAE_CHAT_BASE, refreshTraeCredential, traeHeaders } from './auth.ts';
+import { CHAT_BASE, refreshTraeCredential, traeHeaders } from './auth.ts';
 import { traeVariantModelName } from './models.ts';
 
 /** 模块级日志出口：`traeVariantModelName()` 拿不到流式函数里的 `log` 参数，由通道在 `configure()` 里接上。 */
 let logSink: any = null;
-export function setTraeUpstreamLogger(fn: any) {
+export function setUpstreamLogger(fn: any) {
   logSink = fn;
 }
 function log(...args: unknown[]) {
@@ -322,7 +322,7 @@ export async function chatTrae(account: Account, request: ChatRequest): Promise<
 
   // body 每次现建：`buildTraeBody` 里带了时间戳一类的字段，重试时复用会带上旧值。
   const callUpstream = (credential: any) =>
-    fetch(`${TRAE_CHAT_BASE}${CHAT_PATH}`, {
+    fetch(`${CHAT_BASE}${CHAT_PATH}`, {
       method: 'POST',
       headers: traeHeaders(credential),
       body: JSON.stringify(buildTraeBody(payload, sessionId, variant)),

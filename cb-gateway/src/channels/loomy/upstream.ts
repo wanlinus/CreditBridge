@@ -14,7 +14,7 @@ const CHAT_URL = 'https://loomyad.xunfei.cn/api/v1/chat/completions';
 const UPSTREAM_TIMEOUT_MS = 600000;
 
 let logSink: any = null;
-export function setLoomyUpstreamLogger(fn: any) {
+export function setUpstreamLogger(fn: any) {
   logSink = fn;
 }
 function log(...args: unknown[]) {

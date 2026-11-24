@@ -5,7 +5,7 @@
 
 import type { Account, CatalogModel, ModelInfo } from '../../types.ts';
 import { contextOptions } from '../../shared/model-settings.ts';
-import { TRAE_CHAT_BASE, TRAE_TIMEOUT_MS, traeHeaders } from './auth.ts';
+import { CHAT_BASE, TIMEOUT_MS, traeHeaders } from './auth.ts';
 
 /** 取配置用的 function。**故意和对话请求的 `chat_v3` 不同**，原因见文件头。 */
 const CONFIG_FUNCTION = 'solo_agent';
@@ -14,7 +14,7 @@ const CONFIG_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_CONTEXT = 200000;
 
 let logSink: any = null;
-export function setTraeModelsLogger(fn: any) {
+export function setModelsLogger(fn: any) {
   logSink = fn;
 }
 function log(...args: unknown[]) {
@@ -152,7 +152,7 @@ export function parseTraeConfig(doc: any): TraeModelConfig[] {
  * （配置接口挂了或模型下架），调用方应退回不带 `config_name`/`model_name` 的老形状。
  */
 export async function traeVariantModelName(credential: any, modelId: string): Promise<string | null> {
-  const models = await fetchTraeModels(credential);
+  const models = await fetchModels(credential);
   const model = models.find((item) => item.id === modelId);
   if (!model) return null;
   return model.maxModelName || model.devModelName || null;
@@ -161,13 +161,13 @@ export async function traeVariantModelName(credential: any, modelId: string): Pr
 let cache: { at: number; token: string; models: TraeModelConfig[] } = { at: 0, token: '', models: [] };
 
 /** 拉一次模型配置（带 10 分钟缓存）。失败直接抛——上层会跳过这个账号并记原因，别退回一份会过期的本地快照。 */
-export async function fetchTraeModels(credential: any, force = false): Promise<TraeModelConfig[]> {
+export async function fetchModels(credential: any, force = false): Promise<TraeModelConfig[]> {
   const token = typeof credential?.token === 'string' ? credential.token.slice(-12) : '';
   if (!force && cache.models.length > 0 && cache.token === token && Date.now() - cache.at < CONFIG_TTL_MS) {
     return cache.models;
   }
 
-  const response = await fetch(`${TRAE_CHAT_BASE}/api/ide/v1/batch_get_detail_param`, {
+  const response = await fetch(`${CHAT_BASE}/api/ide/v1/batch_get_detail_param`, {
     method: 'POST',
     headers: {
       ...traeHeaders(credential),
@@ -175,7 +175,7 @@ export async function fetchTraeModels(credential: any, force = false): Promise<T
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ functions: [CONFIG_FUNCTION] }),
-    signal: AbortSignal.timeout(TRAE_TIMEOUT_MS),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`trae config http ${response.status}: ${text.slice(0, 160)}`);
@@ -188,10 +188,10 @@ export async function fetchTraeModels(credential: any, force = false): Promise<T
 }
 
 /**
- * 上游原始目录，给 `/models` 页的上下文窗口编辑器用。档位按 **Max 变体**给、和 `traeModelList()` 同源（都走 `effectiveLimits`）。
+ * 上游原始目录，给 `/models` 页的上下文窗口编辑器用。档位按 **Max 变体**给、和 `modelList()` 同源（都走 `effectiveLimits`）。
  */
-export async function traeCatalog(account: Account): Promise<CatalogModel[]> {
-  const models = await fetchTraeModels(account.credential);
+export async function catalog(account: Account): Promise<CatalogModel[]> {
+  const models = await fetchModels(account.credential);
   return models.map((model) => {
     const { contextWindow, maxTokens } = effectiveLimits(model);
     return {
@@ -216,8 +216,8 @@ function withRateSuffix(name: string, rate: number | null) {
  * 按 OpenAI `/v1/models` 的形状给模型列表。取不到就抛错，**不退回手写快照**：那是第二份会过期的
  * 模型表，它错的那一刻比「没有模型」更危险——用户会选到已下架或能力报错的模型，而且不报错、只静默跑坏。
  */
-export async function traeModelList(account: Account): Promise<ModelInfo[]> {
-  const models = await fetchTraeModels(account.credential);
+export async function modelList(account: Account): Promise<ModelInfo[]> {
+  const models = await fetchModels(account.credential);
   return models.map((model) => {
     const { hasMax, contextWindow, maxTokens } = effectiveLimits(model);
     const contextEstimated = model.contextEstimated === true && !(hasMax && model.maxContext);

@@ -5,13 +5,13 @@ import type { Account, CheckinRecord, Credits } from '../../types.ts';
 import { localDate } from '../../shared/clock.ts';
 import { usableCredential } from '../../core/accounts.ts';
 import { keepEarlierSuccess, readCheckinState, writeCheckinState } from '../../core/checkin-store.ts';
-import { refreshWorkBuddyCredential, WORKBUDDY_BILLING_BASE, WORKBUDDY_TIMEOUT_MS } from './auth.ts';
+import { refreshWorkBuddyCredential, BILLING_BASE, TIMEOUT_MS } from './auth.ts';
 
-const BILLING_URL = `${WORKBUDDY_BILLING_BASE}/v2/billing/meter/get-user-resource`;
-const CHECKIN_URL = `${WORKBUDDY_BILLING_BASE}/v2/billing/meter/daily-checkin`;
+const BILLING_URL = `${BILLING_BASE}/v2/billing/meter/get-user-resource`;
+const CHECKIN_URL = `${BILLING_BASE}/v2/billing/meter/daily-checkin`;
 
 let logSink: any = null;
-export function setWorkBuddyUsageLogger(fn: any) {
+export function setUsageLogger(fn: any) {
   logSink = fn;
 }
 function log(...args: unknown[]) {
@@ -41,7 +41,7 @@ function parseUpstreamTime(raw: any): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-export async function getWorkBuddyCredits(account: Account): Promise<Credits> {
+export async function getCredits(account: Account): Promise<Credits> {
   const credential = await usableCredential(account, refreshWorkBuddyCredential);
   const now = new Date();
   const fmt = (date: any) =>
@@ -57,7 +57,7 @@ export async function getWorkBuddyCredits(account: Account): Promise<Credits> {
       PackageEndTimeRangeBegin: fmt(now),
       PackageEndTimeRangeEnd: fmt(new Date(now.getTime() + 3185136000)),
     }),
-    signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   const text = await response.text();
   let doc: any;
@@ -117,7 +117,7 @@ export async function claimCheckin(account: Account): Promise<CheckinRecord> {
       method: 'POST',
       headers: billingHeaders(credential),
       body: '{}',
-      signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const text = await response.text();
     let doc;

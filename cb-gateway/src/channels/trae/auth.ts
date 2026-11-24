@@ -8,12 +8,12 @@ import type { IdentityPatch, TraeCredential } from '../../types.ts';
 import { credentialExpired, credentialUnavailable } from '../../shared/credential-error.ts';
 
 /** 所有出站请求的超时。上游挂起时无限等待会让整个通道卡死，必须每个 fetch 都带。 */
-export const TRAE_TIMEOUT_MS = 20_000;
+export const TIMEOUT_MS = 20_000;
 
 /** 账号 / 签到 / 额度 / 刷新令牌：同一个 host。 */
-export const TRAE_ACCOUNT_BASE = 'https://api.trae.cn';
+export const ACCOUNT_BASE = 'https://api.trae.cn';
 /** 登录授权页的 host。 */
-export const TRAE_CONSOLE_BASE = 'https://www.trae.cn';
+export const CONSOLE_BASE = 'https://www.trae.cn';
 const EXCHANGE_PATH = '/cloudide/api/v3/trae/oauth/ExchangeToken';
 const IDE_VERSION = '3.3.104';
 const IDE_VERSION_CODE = '20260929';
@@ -22,10 +22,10 @@ const APP_ID = '6eefa01c-1036-4c7e-9ca5-d891f63bfcd8';
 export const TRAE_CLIENT_ID = 'ono9krqynydwx5';
 
 // 对话走这个上游。Trae 把对话流量从 api.trae.cn 移走了（那边 agent 路由现在 404）。
-export const TRAE_CHAT_BASE = 'https://trae-api-cn.mchost.guru';
+export const CHAT_BASE = 'https://trae-api-cn.mchost.guru';
 
 /**
- * 报给上游的客户端版本号。**值由通道声明**（`traeChannel.identity`），经 `configureTraeIdentity()` 传进来。
+ * 报给上游的客户端版本号。**值由通道声明**（`traeChannel.identity`），经 `configureIdentity()` 传进来。
  * `clientVersion` 写错会得到 401 `20405`。
  */
 export let TRAE_CLIENT_VERSION = '';
@@ -43,8 +43,8 @@ const VERSION_URL = 'https://api.trae.cn/icube/api/v1/native/version/trae/cn/lat
  * `clientVersion` 不返回：官方包一直是 `1.107.1`（它是桌面端 `version` 字段，
  * 不是 `appVersion`），自动改它没有依据。
  */
-export async function fetchTraeIdentity(): Promise<IdentityPatch> {
-  const response = await fetch(VERSION_URL, { signal: AbortSignal.timeout(TRAE_TIMEOUT_MS) });
+export async function fetchIdentity(): Promise<IdentityPatch> {
+  const response = await fetch(VERSION_URL, { signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!response.ok) throw new Error(`版本接口 HTTP ${response.status}`);
   const body = (await response.json()) as any;
   const win32 = body?.data?.manifest?.win32;
@@ -60,7 +60,7 @@ export async function fetchTraeIdentity(): Promise<IdentityPatch> {
 
 
 /** 启动时由通道把自述身份注入进来。 */
-export function configureTraeIdentity(identity: { clientVersion?: string; channelVersion?: string; appVersion?: string }) {
+export function configureIdentity(identity: { clientVersion?: string; channelVersion?: string; appVersion?: string }) {
   if (typeof identity.clientVersion === 'string' && identity.clientVersion) TRAE_CLIENT_VERSION = identity.clientVersion;
   if (typeof identity.channelVersion === 'string' && identity.channelVersion) TRAE_BUILD_VERSION = identity.channelVersion;
   if (typeof identity.appVersion === 'string' && identity.appVersion) TRAE_APP_VERSION = identity.appVersion;
@@ -68,7 +68,7 @@ export function configureTraeIdentity(identity: { clientVersion?: string; channe
 
 let logSink: any = null;
 
-export function setTraeLogger(fn: any) {
+export function setLogger(fn: any) {
   logSink = fn;
 }
 
@@ -88,7 +88,7 @@ export function normalizeCredential(auth: any) {
     userId: typeof auth.userId === 'string' ? auth.userId : '',
     username: accountName || (typeof auth.username === 'string' ? auth.username : ''),
     // 刷新走账号 host，对话走专门的 API host。两者分开存，别混。
-    refreshBase: pickBase(auth.host) || pickBase(auth.refreshBase) || TRAE_ACCOUNT_BASE,
+    refreshBase: pickBase(auth.host) || pickBase(auth.refreshBase) || ACCOUNT_BASE,
     expiresAt: firstEpoch(auth.expiredAt, auth.expiresAt),
     refreshExpiresAt: firstEpoch(auth.refreshExpiredAt, auth.refreshExpiresAt),
     machineId: typeof auth.machineId === 'string' ? auth.machineId : '',
@@ -209,7 +209,7 @@ function deviceInfo(credential: any, key: { publicKeyPEM: string }) {
 export async function refreshTraeCredential(credential: TraeCredential): Promise<TraeCredential> {
   if (!credential.refreshToken) throw credentialExpired('没有可用的 Trae refreshToken，请重新登录');
   const key = deviceKeyOf(credential);
-  const base = credential.refreshBase || TRAE_ACCOUNT_BASE;
+  const base = credential.refreshBase || ACCOUNT_BASE;
   let response;
   try {
     response = await fetch(`${base}${EXCHANGE_PATH}`, {
@@ -228,7 +228,7 @@ export async function refreshTraeCredential(credential: TraeCredential): Promise
         DeviceProof: deviceProof(credential.refreshToken, key),
         IDEVersion: TRAE_CLIENT_VERSION,
       }),
-      signal: AbortSignal.timeout(TRAE_TIMEOUT_MS),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (error: any) {
     throw credentialUnavailable(`Trae 刷新令牌请求失败：${error.message}`);

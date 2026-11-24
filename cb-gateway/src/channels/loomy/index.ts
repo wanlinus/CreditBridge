@@ -4,11 +4,11 @@
 
 import type { AppConfig } from '../../types.ts';
 import { defineChannel } from '../types.ts';
-import { configureLoomyIdentity, fetchLoomyVersion, setLoomyLogger } from './auth.ts';
+import { configureIdentity, fetchIdentity, setLogger } from './auth.ts';
 import { runLoomyLogin } from './login.ts';
-import { buildModelList, loomyCatalog } from './models.ts';
-import { chatLoomy, setLoomyUpstreamLogger } from './upstream.ts';
-import { getLoomyCredits, setLoomyUsageLogger } from './usage.ts';
+import { buildModelList, catalog } from './models.ts';
+import { chatLoomy, setUpstreamLogger } from './upstream.ts';
+import { getCredits, setUsageLogger } from './usage.ts';
 
 let config!: AppConfig;
 
@@ -28,15 +28,15 @@ export const loomyChannel = defineChannel({
 
   /** 桌面端走标准 electron-updater，`latest.yml` 里有 `version:`。 */
   async fetchIdentity() {
-    return { clientVersion: await fetchLoomyVersion() };
+    return { clientVersion: await fetchIdentity() };
   },
 
   configure({ log, config: next }) {
     config = next;
-    configureLoomyIdentity(loomyChannel.identity.clientVersion);
-    setLoomyLogger(log);
-    setLoomyUpstreamLogger(log);
-    setLoomyUsageLogger(log);
+    configureIdentity(loomyChannel.identity.clientVersion);
+    setLogger(log);
+    setUpstreamLogger(log);
+    setUsageLogger(log);
   },
 
   async modelsOf(account) {
@@ -45,11 +45,11 @@ export const loomyChannel = defineChannel({
   },
 
   async catalogOf(account) {
-    return loomyCatalog(account, config.defaultMaxTokens);
+    return catalog(account, config.defaultMaxTokens);
   },
 
   async creditsOf(account) {
-    return getLoomyCredits(account);
+    return getCredits(account);
   },
 
   /** 凭据还能不能用：读一次模型列表（最轻的对话域接口）。 */

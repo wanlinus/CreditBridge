@@ -10,11 +10,11 @@ import { credentialExpired } from '../../shared/credential-error.ts';
 import { generateAccountHeaders } from './sign.ts';
 
 /** 账号服务 base。客户端 `loadEnvConfig` 的默认值是 accounttest，生产 `.env.prod` 覆盖成这个。 */
-export const LOOMY_ACCOUNT_BASE = 'https://account.xfinfr.com';
+export const ACCOUNT_BASE = 'https://account.xfinfr.com';
 /** 对话 / 模型 / 余额的统一入口。客户端 `_applyManagedProviderRuntimeConfig` 在积分网关后拼 `/api/v1`。 */
-export const LOOMY_API_BASE = 'https://loomyad.xunfei.cn/api/v1';
-/** 积分网关（余额走它下面的 `/api/v1/points/...`，和 LOOMY_API_BASE 同源）。 */
-export const LOOMY_POINTS_BASE = 'https://loomyad.xunfei.cn';
+export const API_BASE = 'https://loomyad.xunfei.cn/api/v1';
+/** 积分网关（余额走它下面的 `/api/v1/points/...`，和 API_BASE 同源）。 */
+export const POINTS_BASE = 'https://loomyad.xunfei.cn';
 
 /** 应用级密钥（随客户端分发，见文件头）。 */
 const APP_ID = 'GM3LOOMY';
@@ -22,23 +22,23 @@ const ACCESS_KEY_ID = '2thryby66wxi53sk';
 const ACCESS_KEY_SECRET = 'zsak6eadrbawz683wf5r3m2snrwj868r';
 
 /** 客户端版本：`loomy-version` 头 + 通道 identity 都用它。 */
-/** 桌面端 `package.json` 的 `version`。**值由通道声明**（`loomyChannel.identity.clientVersion`），经 `configureLoomyIdentity()` 注入。 */
+/** 桌面端 `package.json` 的 `version`。**值由通道声明**（`loomyChannel.identity.clientVersion`），经 `configureIdentity()` 注入。 */
 export let LOOMY_VERSION = '';
 
 /** 启动时由通道把自述身份注入进来。 */
-export function configureLoomyIdentity(clientVersion: string): void {
+export function configureIdentity(clientVersion: string): void {
   if (clientVersion) LOOMY_VERSION = clientVersion;
 }
 
 /** 桌面端更新源（`electron-updater` 的 `latest.yml`）。 */
 /** 所有出站请求的超时。上游挂起时无限等待会让整个通道卡死，必须每个 fetch 都带。 */
-export const LOOMY_TIMEOUT_MS = 20_000;
+export const TIMEOUT_MS = 20_000;
 
 const UPDATE_FEED = 'https://static-res.xfinfr.com/loomy/win';
 
 /** 读 `latest.yml` 拿最新版本号。 */
-export async function fetchLoomyVersion(): Promise<string> {
-  const response = await fetch(`${UPDATE_FEED}/latest.yml`, { signal: AbortSignal.timeout(LOOMY_TIMEOUT_MS) });
+export async function fetchIdentity(): Promise<string> {
+  const response = await fetch(`${UPDATE_FEED}/latest.yml`, { signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!response.ok) throw new Error(`版本文件 HTTP ${response.status}`);
   const text = await response.text();
   const match = /^version:\s*(\S+)/m.exec(text);
@@ -53,7 +53,7 @@ const UA = 'Loomy|Desktop|Electron|macOS';
 export const SESSION_TTL_MS = 14 * 24 * 3600 * 1000;
 
 let logSink: any = null;
-export function setLoomyLogger(fn: any) {
+export function setLogger(fn: any) {
   logSink = fn;
 }
 function log(...args: unknown[]) {
@@ -102,11 +102,11 @@ async function accountRequest(path: string, param: Record<string, unknown>): Pro
   });
   let response;
   try {
-    response = await fetch(`${LOOMY_ACCOUNT_BASE}${path}`, {
+    response = await fetch(`${ACCOUNT_BASE}${path}`, {
       method: 'POST',
       headers,
       body,
-      signal: AbortSignal.timeout(LOOMY_TIMEOUT_MS),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (error: any) {
     throw new Error(`Loomy 账号服务网络错误（${path}）：${error.message}`);

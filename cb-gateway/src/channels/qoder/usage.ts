@@ -4,7 +4,7 @@
 import type { Account, CheckinRecord, CheckinStatus, Credits } from '../../types.ts';
 import { usableCredential } from '../../core/accounts.ts';
 import { keepEarlierSuccess, readCheckinState, writeCheckinState as writeCheckinStore } from '../../core/checkin-store.ts';
-import { QODER_OPENAPI_BASE, QODER_TIMEOUT_MS, refreshQoderCredential, type QoderCredential } from './auth.ts';
+import { OPENAPI_BASE, TIMEOUT_MS, refreshQoderCredential, type QoderCredential } from './auth.ts';
 
 const USAGE_PATH = '/sash/api/v2/me/usage';
 const CAMPAIGNS_PATH = '/sash/api/v1/me/campaigns';
@@ -17,7 +17,7 @@ const CHINA_OFFSET_MINUTES = 8 * 60;
 const WINDOW_OPEN_HOUR = 10;
 
 let logSink: any = null;
-export function setQoderUsageLogger(fn: any) {
+export function setUsageLogger(fn: any) {
   logSink = fn;
 }
 function log(...args: unknown[]) {
@@ -40,10 +40,10 @@ function authHeaders(credential: QoderCredential): Record<string, string> {
 async function callApi(account: Account, pathname: string, init: RequestInit = {}): Promise<any> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const credential = await usableCredential(account, refreshQoderCredential, { forceRefresh: attempt > 0 });
-    const response = await fetch(`${QODER_OPENAPI_BASE}${pathname}`, {
+    const response = await fetch(`${OPENAPI_BASE}${pathname}`, {
       ...init,
       headers: { ...authHeaders(credential), ...(init.headers as Record<string, string> | undefined) },
-      signal: AbortSignal.timeout(QODER_TIMEOUT_MS),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     const text = await response.text();
     if (response.status === 401 && attempt === 0) {
@@ -75,7 +75,7 @@ async function callApi(account: Account, pathname: string, init: RequestInit = {
  * 额度快照。**`userQuota` 和 `addOnQuota` 不能相加**：前者是套餐额度、后者是加购/活动额度
  * （签到就进这里），语义和过期时间都不同。`totalRemain` 给徽标用，两块明细放 `packages`。
  */
-export async function getQoderCredits(account: Account): Promise<Credits> {
+export async function getCredits(account: Account): Promise<Credits> {
   const credential = await usableCredential(account, refreshQoderCredential);
   const doc = await callApi(account, USAGE_PATH);
   const usage = doc && doc.qoderUsage ? doc.qoderUsage : {};

@@ -69,7 +69,7 @@ export function setModelNameSource(fn: ModelNameSource): void {
 }
 
 /** 取模型名单（数据源由 `upstream.ts` 注入，走 HTTP，不是 CLI）。 */
-export async function fetchQoderModels(): Promise<string[]> {
+export async function fetchModels(): Promise<string[]> {
   if (modelSource === null) {
     throw new Error('模型名单的数据源还没注入（应由 upstream.ts 提供）');
   }
@@ -87,7 +87,7 @@ export async function getModelNames(): Promise<string[]> {
     if (!isFresh(cache)) refreshInBackground('cache stale');
     return cache.models;
   }
-  const models = await fetchQoderModels();
+  const models = await fetchModels();
   writeCache(models);
   log(`模型名单已缓存 ${models.length} 个`);
   return models;
@@ -98,7 +98,7 @@ let refreshing = false;
 function refreshInBackground(reason: string) {
   if (refreshing) return;
   refreshing = true;
-  fetchQoderModels()
+  fetchModels()
     .then((models) => {
       writeCache(models);
       log(`后台刷新模型名单 ${models.length} 个（${reason}）`);
@@ -191,7 +191,7 @@ export function effectiveContextWindowOf(prefix: string, modelName: string): num
 }
 
 /** 上游原始目录，给 `/models` 页的上下文下拉用。`lengths.options` 是 `context_config` 的真实档位。 */
-export function qoderCatalog(defaultMaxTokens: number): CatalogModel[] {
+export function catalog(defaultMaxTokens: number): CatalogModel[] {
   const rates = readPriceFactors();
   return rates.map((entry) => {
     const max = maxContextOfEntry(entry) ?? 0;

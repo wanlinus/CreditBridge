@@ -3,16 +3,16 @@
 // 坑：上游按**设备**记签到（`did_checked_in` 逐设备不同），同机多号不能共用一个 `x-device-id`。
 
 import { defineChannel } from '../types.ts';
-import { configureTraeIdentity, fetchTraeIdentity, mintSelfDeviceId, setTraeLogger } from './auth.ts';
-import { traeCatalog, traeModelList, setTraeModelsLogger } from './models.ts';
-import { chatTrae, setTraeUpstreamLogger } from './upstream.ts';
+import { configureIdentity, fetchIdentity, mintSelfDeviceId, setLogger } from './auth.ts';
+import { catalog, modelList, setModelsLogger } from './models.ts';
+import { chatTrae, setUpstreamLogger } from './upstream.ts';
 import { loginLoopback as traeLoginLoopback, runTraeLogin } from './login.ts';
 import {
   claimCheckin,
   getCheckinStatus,
-  getTraeCredits,
+  getCredits,
   readLastCheckin,
-  setTraeUsageLogger,
+  setUsageLogger,
 } from './usage.ts';
 
 export { contextOptions } from '../../shared/model-settings.ts';
@@ -32,29 +32,29 @@ export const traeChannel = defineChannel({
   },
 
   async fetchIdentity() {
-    return fetchTraeIdentity();
+    return fetchIdentity();
   },
 
   configure(ctx) {
-    setTraeLogger(ctx.log);
-    setTraeModelsLogger(ctx.log);
-    setTraeUpstreamLogger(ctx.log);
-    setTraeUsageLogger(ctx.log);
-    configureTraeIdentity(traeChannel.identity);
+    setLogger(ctx.log);
+    setModelsLogger(ctx.log);
+    setUpstreamLogger(ctx.log);
+    setUsageLogger(ctx.log);
+    configureIdentity(traeChannel.identity);
   },
 
   async modelsOf(account) {
     // **没有凭据就不给列表**：目录来自服务端配置、也要凭据。抛错时路由会把这个账号跳过——
     // 否则模型列表里会出现十几个调不了的模型。
-    return traeModelList(account);
+    return modelList(account);
   },
 
   async catalogOf(account) {
-    return traeCatalog(account);
+    return catalog(account);
   },
 
   async creditsOf(account) {
-    const usage: any = await getTraeCredits(account);
+    const usage: any = await getCredits(account);
     return {
       ...usage,
       totalRemain: usage.remaining,

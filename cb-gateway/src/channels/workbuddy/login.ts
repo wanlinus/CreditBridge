@@ -5,7 +5,7 @@
 import { pathToFileURL } from 'node:url';
 
 import type { LoginResult } from '../../types.ts';
-import { WORKBUDDY_CHAT_BASE, WORKBUDDY_TIMEOUT_MS, workBuddyUserAgent } from './auth.ts';
+import { CHAT_BASE, workBuddyUserAgent } from './auth.ts';
 
 const PREFIX_PATH = '/plugin';
 // auth/state 的 platform 参数。客户端取自 product.json 的 authentication.attributes.platform。
@@ -13,9 +13,10 @@ const PLATFORM = 'workbuddy';
 /** 客户端写死的「还在等用户操作」返回码。 */
 const PENDING_CODE = 11217;
 const POLL_INTERVAL_MS = 1000;
-/** 单次轮询的超时。比 `WORKBUDDY_TIMEOUT_MS` 短：轮询本身应该秒回，慢就说明这次网络有问题、下次再试。 */
+/** 单次轮询的超时。比 `TIMEOUT_MS` 短：轮询本身应该秒回，慢就说明这次网络有问题、下次再试。 */
 const LOGIN_POLL_TIMEOUT_MS = 10_000;
-const TIMEOUT_MS = 5 * 60 * 1000;
+/** 整个登录流程的总时长上限（用户可能一直在浏览器里不点）。**和 `TIMEOUT_MS` 不是一个东西**：那个是单次 HTTP 请求超时。 */
+const LOGIN_TOTAL_TIMEOUT_MS = 5 * 60 * 1000;
 const DOMAIN = 'www.workbuddy.cn';
 
 // 实测登录接口不校验 UA（用 curl 裸调也能过），这里用客户端的串保底。版本号与 `auth.ts` 同源，别另抄一份。
@@ -55,11 +56,11 @@ function sleep(ms: number, signal?: AbortSignal) {
 
 /** ① 创建登录会话，拿到 state 和给用户看的登录页地址。 */
 async function createAuthState() {
-  const response = await fetch(`${WORKBUDDY_CHAT_BASE}/v2${PREFIX_PATH}/auth/state?platform=${PLATFORM}`, {
+  const response = await fetch(`${CHAT_BASE}/v2${PREFIX_PATH}/auth/state?platform=${PLATFORM}`, {
     method: 'POST',
     headers: loginHeaders(),
     body: '{}',
-    signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS),
+    signal: AbortSignal.timeout(LOGIN_TOTAL_TIMEOUT_MS),
   });
   const text = await response.text();
   let doc: any;
@@ -77,8 +78,8 @@ async function createAuthState() {
 
 /** ③ 轮询直到用户登录完成。 */
 async function pollToken(state: string, signal?: AbortSignal) {
-  const deadline = Date.now() + TIMEOUT_MS;
-  const url = `${WORKBUDDY_CHAT_BASE}/v2${PREFIX_PATH}/auth/token?state=${encodeURIComponent(state)}`;
+  const deadline = Date.now() + LOGIN_TOTAL_TIMEOUT_MS;
+  const url = `${CHAT_BASE}/v2${PREFIX_PATH}/auth/token?state=${encodeURIComponent(state)}`;
   let attempt = 0;
   while (Date.now() < deadline) {
     await sleep(POLL_INTERVAL_MS, signal);
@@ -113,9 +114,9 @@ async function pollToken(state: string, signal?: AbortSignal) {
  */
 async function fetchAccount(state: string, accessToken: string) {
   try {
-    const response = await fetch(`${WORKBUDDY_CHAT_BASE}/v2${PREFIX_PATH}/login/account?state=${encodeURIComponent(state)}`, {
+    const response = await fetch(`${CHAT_BASE}/v2${PREFIX_PATH}/login/account?state=${encodeURIComponent(state)}`, {
       headers: loginHeaders({ Authorization: `Bearer ${accessToken}` }),
-      signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS),
+      signal: AbortSignal.timeout(LOGIN_TOTAL_TIMEOUT_MS),
     });
     const doc: any = await response.json();
     const data = doc && doc.data;

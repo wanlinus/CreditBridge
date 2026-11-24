@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-// 版本值在 `qoderChannel.identity`，由 `configureQoderIdentity()` 注入 `login.ts` 的 `QODER_VERSION`。
+// 版本值在 `qoderChannel.identity`，由 `configureIdentity()` 注入 `login.ts` 的 `QODER_VERSION`。
 // 这里 re-export 成签名器用的名字；`sign.ts` 在调用时读，所以拿到的是注入后的值。
 export { QODER_VERSION as COSY_VERSION } from '../login.ts';
 

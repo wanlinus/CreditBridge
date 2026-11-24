@@ -6,10 +6,10 @@ import { credentialExpired, credentialUnavailable } from '../../shared/credentia
 import type { IdentityPatch } from '../../types.ts';
 
 /** 所有出站请求的超时。上游挂起时无限等待会让整个通道卡死，必须每个 fetch 都带。 */
-export const WORKBUDDY_TIMEOUT_MS = 20_000;
+export const TIMEOUT_MS = 20_000;
 
-export const WORKBUDDY_CHAT_BASE = 'https://copilot.tencent.com';
-export const WORKBUDDY_BILLING_BASE = 'https://www.codebuddy.cn';
+export const CHAT_BASE = 'https://copilot.tencent.com';
+export const BILLING_BASE = 'https://www.codebuddy.cn';
 /** 账号与登录接口都挂在 `/v2/plugin` 下（product.json 的 authentication.attributes.prefixPath）。 */
 const PREFIX_PATH = '/plugin';
 
@@ -24,7 +24,7 @@ function log(...args: unknown[]) {
 
 /**
  * 报给上游的客户端版本串。**不在这里写死**：版本号属于通道自述（`workbuddyChannel.identity`），
- * 启动时由 `configureWorkBuddyIdentity()` 注入。`login-cli.ts` 也会走 `configure()`，所以不需要兜底值。
+ * 启动时由 `configureIdentity()` 注入。`login-cli.ts` 也会走 `configure()`，所以不需要兜底值。
  */
 const versions = { clientVersion: '', channelVersion: '', ideVersion: '' };
 
@@ -38,8 +38,8 @@ const VERSION_URL = 'https://download.codebuddy.cn/workbuddy/saas/version.json';
  * 版本串形如 `5.11.3.43806934-ecace0f7`：前三段是 `clientVersion`，
  * 第四段是构建号（`channelVersion`）。
  */
-export async function fetchWorkBuddyIdentity(): Promise<IdentityPatch> {
-  const response = await fetch(VERSION_URL, { signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS) });
+export async function fetchIdentity(): Promise<IdentityPatch> {
+  const response = await fetch(VERSION_URL, { signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!response.ok) throw new Error(`版本接口 HTTP ${response.status}`);
   const body = (await response.json()) as any;
   const raw = body?.['win32-x64-system']?.stable?.version;
@@ -55,7 +55,7 @@ export async function fetchWorkBuddyIdentity(): Promise<IdentityPatch> {
  * 由通道在 `configure()` 里注入真实版本。**唯一的注入点**：`upstream.ts` / `models.ts` /
  * `login.ts` 都从这里取——各处自己接一个 `configure*()` 的话，加一个版本字段就要改四个文件。
  */
-export function configureWorkBuddyIdentity(identity: { clientVersion?: string; channelVersion?: string; ideVersion?: string }) {
+export function configureIdentity(identity: { clientVersion?: string; channelVersion?: string; ideVersion?: string }) {
   if (typeof identity.clientVersion === 'string' && identity.clientVersion) versions.clientVersion = identity.clientVersion;
   if (typeof identity.channelVersion === 'string' && identity.channelVersion) versions.channelVersion = identity.channelVersion;
   if (typeof identity.ideVersion === 'string' && identity.ideVersion) versions.ideVersion = identity.ideVersion;
@@ -87,18 +87,18 @@ export async function refreshWorkBuddyCredential(credential: any) {
   }
   let response;
   try {
-    response = await fetch(`${WORKBUDDY_CHAT_BASE}/v2${PREFIX_PATH}/auth/token/refresh`, {
+    response = await fetch(`${CHAT_BASE}/v2${PREFIX_PATH}/auth/token/refresh`, {
       method: 'POST',
       headers: {
         Accept: 'application/json, text/plain, */*',
         'X-Requested-With': 'XMLHttpRequest',
-        Origin: WORKBUDDY_BILLING_BASE,
-        Referer: `${WORKBUDDY_BILLING_BASE}/`,
+        Origin: BILLING_BASE,
+        Referer: `${BILLING_BASE}/`,
         'User-Agent': cliUserAgent(),
         'X-Refresh-Token': credential.refreshToken,
         'X-Auth-Refresh-Source': 'workbuddy',
       },
-      signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (error: any) {
     // 连接超时/断网：重试有意义。
@@ -145,7 +145,7 @@ export async function revokeWorkBuddySession(credential: any) {
   const refreshToken = credential && typeof credential.refreshToken === 'string' ? credential.refreshToken : '';
   if (!refreshToken) return false;
   try {
-    const response = await fetch(`${WORKBUDDY_CHAT_BASE}/v2${PREFIX_PATH}/auth/logout`, {
+    const response = await fetch(`${CHAT_BASE}/v2${PREFIX_PATH}/auth/logout`, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -157,7 +157,7 @@ export async function revokeWorkBuddySession(credential: any) {
         'User-Agent': workBuddyUserAgent(),
       },
       body: '{}',
-      signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     log(`server logout -> ${response.status}`);
     return response.ok;

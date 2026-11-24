@@ -4,15 +4,15 @@
 
 import type { Account, AccountProfile, AppConfig } from '../../types.ts';
 import { defineChannel } from '../types.ts';
-import { configureWorkBuddyIdentity, fetchWorkBuddyIdentity, revokeWorkBuddySession, setLogger } from './auth.ts';
+import { configureIdentity, fetchIdentity, revokeWorkBuddySession, setLogger } from './auth.ts';
 import { runWorkBuddyLogin } from './login.ts';
-import { buildModelList, fetchWorkBuddyModels, setWorkBuddyModelsLogger } from './models.ts';
-import { chatWorkBuddy, setWorkBuddyUpstreamLogger } from './upstream.ts';
+import { buildModelList, fetchModels, setModelsLogger } from './models.ts';
+import { chatWorkBuddy, setUpstreamLogger } from './upstream.ts';
 import {
   claimCheckin,
-  getWorkBuddyCredits,
+  getCredits,
   readLastCheckin,
-  setWorkBuddyUsageLogger,
+  setUsageLogger,
 } from './usage.ts';
 
 let config!: AppConfig;
@@ -36,17 +36,17 @@ export const workbuddyChannel = defineChannel({
 
   /** 读官方 `version.json` 的 `win32-x64-system.stable`（网关报 Windows 头）。 */
   async fetchIdentity() {
-    return fetchWorkBuddyIdentity();
+    return fetchIdentity();
   },
 
   configure({ log, config: next }) {
     config = next;
     // 版本号只注入一次（`auth.ts`），三个消费方都从那里取。
-    configureWorkBuddyIdentity(workbuddyChannel.identity);
+    configureIdentity(workbuddyChannel.identity);
     setLogger(log);
-    setWorkBuddyModelsLogger(log);
-    setWorkBuddyUpstreamLogger(log);
-    setWorkBuddyUsageLogger(log);
+    setModelsLogger(log);
+    setUpstreamLogger(log);
+    setUsageLogger(log);
   },
 
   /** 交互式登录：网页授权 + 轮询，由网关起后台任务。返回凭据和账号信息，**不写盘**（存成第几号是账号层的事）。 */
@@ -56,22 +56,22 @@ export const workbuddyChannel = defineChannel({
 
   /** 凭据还能不能用：拿余额接口试一次，顺便确认 uid。 */
   async probe(account: Account): Promise<AccountProfile> {
-    const credits = await getWorkBuddyCredits(account);
+    const credits = await getCredits(account);
     return credits.account ?? {};
   },
 
   async modelsOf(account) {
-    const models = await fetchWorkBuddyModels(account);
+    const models = await fetchModels(account);
     return buildModelList(models, config.defaultContextWindow, config.defaultMaxTokens);
   },
 
   /** 上游原始目录（保留 `lengths` / `reasoning` / `credits`），给上下文窗口编辑器用。契约里的可选部分。 */
   async catalogOf(account) {
-    return fetchWorkBuddyModels(account);
+    return fetchModels(account);
   },
 
   async creditsOf(account) {
-    return getWorkBuddyCredits(account);
+    return getCredits(account);
   },
 
   async checkinStatusOf() {

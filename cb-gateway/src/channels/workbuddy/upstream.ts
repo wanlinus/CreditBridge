@@ -9,9 +9,9 @@ import { usableCredential } from '../../core/accounts.ts';
 import { aggregateSse, usageFromSseLine } from '../../shared/openai-sse.ts';
 import { asCredentialError } from '../../shared/credential-error.ts';
 import { UpstreamError, retryAfterAt } from '../../shared/upstream-error.ts';
-import { refreshWorkBuddyCredential, WORKBUDDY_BILLING_BASE, WORKBUDDY_CHAT_BASE, workBuddyIdeVersion, workBuddyUserAgent } from './auth.ts';
+import { refreshWorkBuddyCredential, BILLING_BASE, CHAT_BASE, workBuddyIdeVersion, workBuddyUserAgent } from './auth.ts';
 
-const CHAT_URL = `${WORKBUDDY_CHAT_BASE}/v2/chat/completions`;
+const CHAT_URL = `${CHAT_BASE}/v2/chat/completions`;
 
 /**
  * WorkBuddy 网关的渠道过滤会把这些说法当成"别家客户端"（移植自 dsh-workbuddy-connect 0.7.9-p1）。
@@ -25,7 +25,7 @@ const CHANNEL_PHRASE_REWRITES = [
 
 let logSink: any = null;
 
-export function setWorkBuddyUpstreamLogger(fn: any) {
+export function setUpstreamLogger(fn: any) {
   logSink = fn;
 }
 
@@ -118,8 +118,8 @@ function chatHeaders(credential: any) {
     Accept: 'application/json, text/plain, */*',
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
-    Origin: WORKBUDDY_BILLING_BASE,
-    Referer: `${WORKBUDDY_BILLING_BASE}/`,
+    Origin: BILLING_BASE,
+    Referer: `${BILLING_BASE}/`,
     'User-Agent': workBuddyUserAgent(),
     'X-IDE-Type': 'WorkBuddy',
     'X-IDE-Name': 'WorkBuddy',

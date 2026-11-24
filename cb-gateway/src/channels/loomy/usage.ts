@@ -6,12 +6,12 @@
 import type { Account, Credits } from '../../types.ts';
 import { usableCredential } from '../../core/accounts.ts';
 import { localDate } from '../../shared/clock.ts';
-import { LOOMY_POINTS_BASE, LOOMY_TIMEOUT_MS, loomyApiHeaders, refreshLoomyCredential } from './auth.ts';
+import { POINTS_BASE, TIMEOUT_MS, loomyApiHeaders, refreshLoomyCredential } from './auth.ts';
 
 const RECORDS_PATH = '/api/v1/points/records';
 
 let logSink: any = null;
-export function setLoomyUsageLogger(fn: any) {
+export function setUsageLogger(fn: any) {
   logSink = fn;
 }
 function log(...args: unknown[]) {
@@ -19,13 +19,13 @@ function log(...args: unknown[]) {
 }
 
 /** 拉一次余额。 */
-export async function getLoomyCredits(account: Account): Promise<Credits> {
+export async function getCredits(account: Account): Promise<Credits> {
   const credential = await usableCredential(account, refreshLoomyCredential);
   // `pageSize` 从 1 提到 100：这个接口同时回余额和流水，一次请求把「今日已用」也算出来。
-  const url = `${LOOMY_POINTS_BASE}${RECORDS_PATH}?pageNo=1&pageSize=100&recordType=all`;
+  const url = `${POINTS_BASE}${RECORDS_PATH}?pageNo=1&pageSize=100&recordType=all`;
   const response = await fetch(url, {
     headers: loomyApiHeaders(credential.session),
-    signal: AbortSignal.timeout(LOOMY_TIMEOUT_MS),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   const text = await response.text();
   let doc;

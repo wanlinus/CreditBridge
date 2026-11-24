@@ -47,7 +47,7 @@ const IGNORED_PARAMS = [
 
 let logSink: any = null;
 
-export function setQoderUpstreamLogger(fn: any): void {
+export function setUpstreamLogger(fn: any): void {
   logSink = fn;
 }
 

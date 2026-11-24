@@ -6,7 +6,7 @@
 import type { Account, CatalogModel, ModelInfo } from '../../types.ts';
 import { contextOptions } from '../../shared/model-settings.ts';
 import { usableCredential } from '../../core/accounts.ts';
-import { LOOMY_API_BASE, LOOMY_TIMEOUT_MS, loomyApiHeaders, refreshLoomyCredential } from './auth.ts';
+import { API_BASE, TIMEOUT_MS, loomyApiHeaders, refreshLoomyCredential } from './auth.ts';
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const cache = new Map<string, { at: number; models: RawModel[] }>();
@@ -63,11 +63,11 @@ function normalizeModel(raw: any): RawModel | null {
   };
 }
 
-export async function fetchLoomyModels(account: Account): Promise<RawModel[]> {
+export async function fetchModels(account: Account): Promise<RawModel[]> {
   const credential = await usableCredential(account, refreshLoomyCredential);
-  const response = await fetch(`${LOOMY_API_BASE}/models`, {
+  const response = await fetch(`${API_BASE}/models`, {
     headers: loomyApiHeaders(credential.session),
-    signal: AbortSignal.timeout(LOOMY_TIMEOUT_MS),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`Loomy /models HTTP ${response.status}: ${text.slice(0, 200)}`);
@@ -83,16 +83,16 @@ export async function fetchLoomyModels(account: Account): Promise<RawModel[]> {
   return models;
 }
 
-export async function loomyModels(account: Account): Promise<RawModel[]> {
+export async function modelList(account: Account): Promise<RawModel[]> {
   const cached = cache.get(account.id);
   if (cached && cached.models.length > 0 && Date.now() - cached.at < CACHE_TTL_MS) return cached.models;
-  const models = await fetchLoomyModels(account);
+  const models = await fetchModels(account);
   cache.set(account.id, { at: Date.now(), models });
   return models;
 }
 
 export async function buildModelList(account: Account, defaultContextWindow: number, defaultMaxTokens: number): Promise<ModelInfo[]> {
-  const models = await loomyModels(account);
+  const models = await modelList(account);
   return models.map((model) => ({
     id: model.id,
     object: 'model',
@@ -112,8 +112,8 @@ export async function buildModelList(account: Account, defaultContextWindow: num
  * 上游原始目录，给 `/models` 页的上下文窗口下拉用。Loomy 上游**没有档位表**（只有一个
  * `limit.context`），所以 `lengths.options` 按上限比例推三档（`contextOptions`）。
  */
-export async function loomyCatalog(account: Account, defaultMaxTokens: number): Promise<CatalogModel[]> {
-  const models = await loomyModels(account);
+export async function catalog(account: Account, defaultMaxTokens: number): Promise<CatalogModel[]> {
+  const models = await modelList(account);
   return models.map((model) => {
     const max = model.contextLength > 0 ? model.contextLength : 0;
     return {

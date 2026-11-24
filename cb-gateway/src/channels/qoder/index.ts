@@ -6,15 +6,15 @@ import type { AppConfig } from '../../types.ts';
 import { defineChannel } from '../types.ts';
 import { accountsOf } from '../../core/accounts.ts';
 import { deviceFlowLogin } from './login.ts';
-import { configureQoderIdentity, fetchQoderIdentity } from './auth.ts';
-import { buildModelList, getModelNames, invalidateModelCache, qoderCatalog, setModelsLogger } from './models.ts';
-import { chatQoder, setQoderModelSource, setQoderUpstreamLogger } from './upstream.ts';
+import { configureIdentity, fetchIdentity } from './auth.ts';
+import { buildModelList, getModelNames, invalidateModelCache, catalog, setModelsLogger } from './models.ts';
+import { chatQoder, setQoderModelSource, setUpstreamLogger } from './upstream.ts';
 import {
   claimCheckin,
   getCheckinStatus,
-  getQoderCredits,
+  getCredits,
   readLastCheckin,
-  setQoderUsageLogger,
+  setUsageLogger,
 } from './usage.ts';
 
 let config!: AppConfig;
@@ -48,16 +48,16 @@ export const qoderChannel = defineChannel({
 
   /** 桌面端走标准 electron-updater，`latest.yml` 里有 `version:`。 */
   async fetchIdentity() {
-    return fetchQoderIdentity();
+    return fetchIdentity();
   },
 
   configure({ log, config: next }) {
     config = next;
     channelLog = log;
-    configureQoderIdentity(qoderChannel.identity.clientVersion);
+    configureIdentity(qoderChannel.identity.clientVersion);
     setModelsLogger(log);
-    setQoderUpstreamLogger(log);
-    setQoderUsageLogger(log);
+    setUpstreamLogger(log);
+    setUsageLogger(log);
 
     // 模型名单要 COSY 签名、签名要账号，所以取数由 `upstream` 提供、这里接「从哪儿拿账号」。
     // 优先挑 `ready` 的号：`invalid` 的令牌已废，拿它去签名必然失败。
@@ -78,11 +78,11 @@ export const qoderChannel = defineChannel({
    * `max_input_tokens` 只是默认档，只显示一个数字会让人以为窗口只能那么大。
    */
   async catalogOf() {
-    return qoderCatalog(config.defaultMaxTokens);
+    return catalog(config.defaultMaxTokens);
   },
 
   async creditsOf(account) {
-    return getQoderCredits(account);
+    return getCredits(account);
   },
 
   async checkinStatusOf(account) {
@@ -102,7 +102,7 @@ export const qoderChannel = defineChannel({
    * （会现场补算），不该挡住账号就绪——额度和签到才是面板的主要信息。
    */
   async probe(account) {
-    const credits = await getQoderCredits(account);
+    const credits = await getCredits(account);
     const credential = account.credential as { userInfo?: { key?: string } } | null | undefined;
     if (!credential?.userInfo?.key) {
       logStatus('凭据里缺少对话签名信息（老数据或登录时现算失败）；对话会现场补算，额度与签到不受影响');

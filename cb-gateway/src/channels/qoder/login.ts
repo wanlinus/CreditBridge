@@ -2,7 +2,7 @@
 // 反直觉：拿到的 `dt-` 一次授权解决全部需求——`/sash/*` 直接打，对话则用它现算 COSY 签名输入；
 // 「`dt-` 喂 CLI 被 `access_token_invalid` 拒」只适用于 CLI 的 accessToken 模式，与签名无关。
 
-import { QODER_OPENAPI_BASE, QODER_TIMEOUT_MS, QODER_WEB_BASE } from './auth.ts';
+import { OPENAPI_BASE, TIMEOUT_MS, WEB_BASE } from './auth.ts';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -28,16 +28,16 @@ const CLIENT_ID = 'e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb';
  * 之前用的 `1.1.79-hotfix.19` 是 CLI 时代的遗留值——桌面端包里搜不到它，
  * 也没有 `cosy-version` 头，`minimal_version.cli` 门禁并不校验这个值。
  *
- * **值由通道声明**（`qoderChannel.identity.clientVersion`），经 `configureQoderIdentity()` 传进来。
+ * **值由通道声明**（`qoderChannel.identity.clientVersion`），经 `configureIdentity()` 传进来。
  */
 export let QODER_VERSION = '';
 
-/** 由 `auth.ts` 的 `configureQoderIdentity()` 调用：`export let` 不能跨模块赋值。 */
+/** 由 `auth.ts` 的 `configureIdentity()` 调用：`export let` 不能跨模块赋值。 */
 export function setQoderVersion(value: string): void {
   if (value) QODER_VERSION = value;
 }
 
-/** 用函数而不是模块顶层常量：版本号由 `configureQoderIdentity()` 在启动时注入，顶层常量会拿到空串。 */
+/** 用函数而不是模块顶层常量：版本号由 `configureIdentity()` 在启动时注入，顶层常量会拿到空串。 */
 function userAgent(): string {
   return `qoder/${QODER_VERSION}`;
 }
@@ -92,7 +92,7 @@ export function buildAuthorizeUrl(input: { challenge: string; nonce: string; mac
   if (input.machineToken && input.machineToken.trim() !== '') {
     params.set('machine_token', input.machineToken);
   }
-  return `${QODER_WEB_BASE}${AUTH_PATH}?${params.toString()}`;
+  return `${WEB_BASE}${AUTH_PATH}?${params.toString()}`;
 }
 
 /** 拼轮询 URL。只带 nonce + verifier + challenge_method。 */
@@ -102,7 +102,7 @@ export function buildPollUrl(input: { nonce: string; verifier: string }): string
     verifier: input.verifier,
     challenge_method: 'S256',
   });
-  return `${QODER_OPENAPI_BASE}${POLL_PATH}?${params.toString()}`;
+  return `${OPENAPI_BASE}${POLL_PATH}?${params.toString()}`;
 }
 
 export interface DeviceFlowResult {
@@ -226,10 +226,10 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * **失败不抛错**：昵称只用于展示，不值得为它把一次成功的登录搞失败。 */
 export async function fetchUserInfo(token: string): Promise<{ userId: string; username: string } | null> {
   try {
-    const response = await fetch(`${QODER_OPENAPI_BASE}/api/v1/userinfo`, {
+    const response = await fetch(`${OPENAPI_BASE}/api/v1/userinfo`, {
       method: 'GET',
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(QODER_TIMEOUT_MS),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!response.ok) return null;
     const doc: any = await response.json();
