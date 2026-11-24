@@ -1,0 +1,341 @@
+/*
+ * 全局基样式 + 少量共用类。
+ *
+ * **本文件只放「跨页面共用」的东西**。组件自己的样式写在 SFC 的 `<style scoped>` 里——
+ * v2 那套「一套全局 CSS 挤在 layout.ts 里、靠类名约定维持秩序」正是 v3 要解决的问题。
+ *
+ * 唯一保留的全局类是 `.wrap`（定宽容器）和 `.muted` / `.mono` 这几个纯排版工具类。
+ */
+@import './tokens.css';
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    14px/1.6 'Segoe UI',
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/*
+ * 键盘焦点。**只给 `:focus-visible`**——鼠标点击不出现焦点环，键盘 Tab 才出现。
+ * 自制的按钮（.btn、tab、行内链接）都继承这一条，不用每个组件各写一遍。
+ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+code,
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+code {
+  background: var(--card2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--fg);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.wrap {
+  max-width: var(--wrap);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/*
+ * 数字用等宽字形：余额、积分、token 数在表格里要能按位对齐。v2 里这条是散在各处的
+ * `tabular-nums`，这里提成一个工具类。
+ */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 按钮。**这一套是跨页面共用的**，不许各页面再自己拼一遍边框和字号——
+ * v2 的按钮样式散在 layout.ts 与各页面的内联 style 里，同一个「删除」在两处长得不一样。
+ *
+ * 五个变体够用了：默认（次要动作）、`.primary`（这一屏唯一的主动作）、`.ghost`（更弱的
+ * 工具按钮）、`.danger`（不可撤销）、`.sm`（表格行内）。
+ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 4px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--card2);
+  text-decoration: none;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* 用亮度而不是写死一个更深的蓝：换 `--accent` 时 hover 不会掉队。 */
+.btn.primary:hover:not(:disabled) {
+  background: var(--accent);
+  filter: brightness(0.92);
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--muted);
+}
+
+.btn.danger {
+  color: var(--bad);
+  border-color: #f0cfcf;
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: var(--bad-bg);
+}
+
+.btn.sm {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+
+/*
+ * 卡片：**全站唯一的一份**。
+ *
+ * `components/CardPanel.vue` 只负责结构（什么时候渲染标题栏、插槽放哪），外观全在这里。
+ * 早先组件里也写了一份 scoped 样式，两套并存——改圆角要记得改两处，漏掉的那处不报错。
+ */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.card > .title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* 标题栏里常有图标、徽标、按钮，窄屏必须能换行。 */
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.card > .title > .grow {
+  flex: 1;
+}
+
+.card > .body {
+  padding: 16px;
+}
+
+.card > .body.flush {
+  padding: 0;
+}
+
+/*
+ * 提示条（`.alert`）：**全站唯一的一份**。
+ *
+ * 2026-11-13 审查时发现七处各写了一遍：六份逐字相同、另一份（概览）略有差异，
+ * 而且已经漂了——四条 `.alert.bad` 的 padding 和其余三条不一样，`.bad` 在
+ * `AccountDetailView` 里还撞上了「行内错误文字」的规则（12px）。
+ *
+ * 变体：
+ *   `.alert`        中性（只有左边框着色）
+ *   `.alert.bad`    错误 / 危险
+ *   `.alert.warn`   需要处理但不影响使用（比如某个号在限流）
+ *   `.alert.ok`     成功
+ *
+ * **不要再用裸 `.bad` 做文字颜色**：那是 `.alert` 的变体名，撞上会静默改变字号。
+ * 行内错误文字统一用 `.err`。
+ */
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.7;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  background: var(--card);
+}
+
+.alert > .grow {
+  flex: 1;
+}
+
+/* 文字部分可换行、可截断，不把同一行的按钮挤走。 */
+.alert > .body {
+  flex: 1;
+  min-width: 240px;
+}
+
+.alert.bad {
+  background: var(--bad-bg);
+  color: var(--bad);
+  border-left-color: var(--bad);
+}
+
+.alert.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-left-color: var(--warn);
+}
+
+.alert.ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-left-color: var(--ok);
+}
+
+/*
+ * 行内错误文字（表单校验、某个卡片里的「取余额失败」）。
+ *
+ * 只改颜色、不改字号——它嵌在正常文案里，放大字号会让那一行看起来像个标题。
+ */
+.err {
+  margin: 6px 0 2px;
+  color: var(--bad);
+  font-size: 12px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+/*
+ * 纯排版工具类：**跨页面共用的东西只在这里**。
+ *
+ * 2026-11-13 审查时 `grow` / `small` / `hint` / `ellipsis` 在各页面 scoped 里各写了
+ * 一遍（`grow` 十份、`small` 九份）。内容本来就一样，只是被抄了十遍——代价是下次
+ * 想统一调「小字是 12 还是 13」要改十个地方，而漏掉的那一处看着就是不一样。
+ */
+.grow {
+  flex: 1;
+}
+
+.small {
+  font-size: 12px;
+}
+
+/* 灰色小字正文：上下文说明、页面底注共用这一层。 */
+.dim {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.ellipsis {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 行内错误文字（表单校验、某个卡片里的「取余额失败」）。
+ *
+ * 只改颜色、不改字号——它嵌在正常文案里，放大字号会让那一行看起来像个标题。
+ * **不要用裸 `.bad` 当文字色**：那是 `.alert` 的变体名，撞上会静默改变字号
+ * （2026-11-13 审查发现同一条提示在四个页面 13px、两个页面 12px）。
+ */
+.err {
+  margin: 6px 0 2px;
+  color: var(--bad);
+  font-size: 12px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+/*
+ * 表格：v2 的 `.table`。密集行、细线、数字右对齐由 `.num` 负责。
+ */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.table th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: var(--hover);
+}
+
+.table td.empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 24px 12px;
+}

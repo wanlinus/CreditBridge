@@ -1,0 +1,21 @@
+# 不进货架的东西。
+#
+# 判据是「镜像里要不要」：
+#   node_modules  依赖在镜像里 npm ci 装，不需要把本机的带进构建上下文
+#   data          明文凭据和账本，走卷
+#   test/tools    只在开发机上用
+#   .qoder-probe  逆向时的临时产物，可能上百 MB
+#
+# **`dist` 不能排除**（2026-11-12 改）：v3 的 `COPY web/dist ./web/dist` 需要它。
+# 之前有一条裸 `dist`（本想排除打包脚本的输出），但 Docker 的忽略是全局的——它会把
+# `web/dist` 一起排掉，表现是 `COPY` 报 "not found"，而本地明明有这个目录。
+node_modules
+data
+test
+tools
+.qoder-probe
+*.tgz
+*.log
+*.md
+Dockerfile
+compose.yaml

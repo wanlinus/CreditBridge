@@ -1,0 +1,24 @@
+# pnpm 的工作区/构建配置。里面有 pnpm 自动写入的项，也有我们显式声明的项。
+#
+# ── allowBuilds 是干什么的 ────────────────────────────────────────────────
+#
+# pnpm 的 `strict-dep-builds` **默认是 true**（`pnpm.mjs` 里 `"strict-dep-builds": true`），
+# 意思是：只要有任何依赖的 install/postinstall 脚本没被显式许可，`pnpm install` 就以
+# `ERR_PNPM_IGNORED_BUILDS` 退出（**exit 1**），哪怕依赖其实已经装好了。
+#
+# 这个 exit code 会骗人：它看起来像安装失败，实际只是「有脚本没被许可」。CI 里
+# 会把整个构建判死，本地则容易让人以为网络或版本有问题。
+#
+# 许可键是 `allowBuilds`（不是直觉上的 `ignoredBuiltDependencies` —— 那个键存在，
+# 但它的作用是**记录**被忽略的依赖，恰恰会触发上面那个错误）。
+#
+# `core-js` 是 antd 的传递依赖，它的 postinstall 只打印一条捐赠横幅，不生成任何产物。
+# 显式许可它，是为了让严格模式继续对**未来新出现的**构建脚本生效——比关掉
+# `strict-dep-builds` 更精准。
+allowBuilds:
+  core-js@3.51.0: true
+
+# pnpm 自动加的：`@vitejs/plugin-vue@6.0.11` 发布还不满默认的「新版本冷静期」，
+# 加进来表示「这个版本我知道、别拦」。保留。
+minimumReleaseAgeExclude:
+  - '@vitejs/plugin-vue@6.0.11'

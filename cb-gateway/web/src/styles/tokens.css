@@ -1,0 +1,61 @@
+/*
+ * 设计 token：从 v2 的 `src/ui/layout.ts` 的 `:root` **原样搬过来**。
+ *
+ * 为什么不重新设计：这四档状态色（`--ok` / `--warn` / `--bad` / `--muted`）是「同一概念
+ * 同一颜色」的全部依据。499 那种「看起来像错误、实际是正常」的语义靠它表达，换一套
+ * 色阶就会让人重新学一遍。搬过来是零成本的一致性。
+ */
+:root {
+  color-scheme: light;
+
+  --bg: #f6f7f9;
+  --card: #ffffff;
+  --card2: #f1f3f6;
+  --hover: #fafbfc;
+  --line: #e2e5ea;
+
+  --fg: #1f2328;
+  --muted: #68707d;
+
+  --accent: #2563eb;
+  --accent-weak: #eff4ff;
+
+  --ok: #15803d;
+  --ok-bg: #e9f7ee;
+  --warn: #9a5b00;
+  --warn-bg: #fdf5e3;
+  --bad: #b91c1c;
+  --bad-bg: #fdeeee;
+  --muted-bg: #f1f3f6;
+
+  /*
+   * 图表色板。canvas 里 `var(--x)` 不生效（那是 CSS 的解析，不是 JS 的），
+   * 所以 `TrendChart` 在首次渲染时用 `getComputedStyle` 读一次这些值，之后按名次分配。
+   *
+   * 顺序 = 取色顺序 = 累计消耗从高到低。改顺序等于把「谁是什么颜色」换一遍，
+   * 用户会以为数据变了，所以只在新色板整体替换时动它。
+   */
+  --chart-1: #2f6df6;
+  --chart-2: #0f9d8a;
+  --chart-3: #e08a00;
+  --chart-4: #8b5cf6;
+  --chart-5: #e0447c;
+  --chart-6: #5a9e1e;
+  --chart-7: #0891b2;
+  --chart-8: #b45309;
+  /* 被合并进「其他」的那一类。固定中性灰，不参与色板轮转。 */
+  --chart-other: #a3a9b3;
+  /*
+   * `--chart-1` 的浅色版本：单日 24 小时视图里「空闲时段」的柱子用它，峰时段用实色。
+   *
+   * 早先试过「深蓝 vs 亮蓝」（#1d4ed8 vs #2f6df6），在真实屏幕上几乎分不出来——图例
+   * 写着「深色 = 高峰」，看起来却是一种颜色。同色相拉开明度才认得出来。
+   */
+  --chart-1-soft: #a9c0fb;
+
+  --radius: 10px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+
+  /* 内容区定宽。和 v2 的 `.wrap` 一致，换库时保持同样的阅读宽度。 */
+  --wrap: 1120px;
+}

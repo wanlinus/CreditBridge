@@ -1,0 +1,67 @@
+# 网关容器编排（**服务器侧唯一需要存在的文件**）。
+#
+# 部署位置：`~/docker/cb-gateway/`，这个目录里只有两样东西——本文件和 `data/`。
+# 代码不在这里：镜像在开发机上构建好、`docker save | ssh | docker load` 过去，
+# 由 `scripts/deploy.ps1` 一条命令做完。所以这里**没有 build 段**。
+#
+# 起停：docker compose up -d --force-recreate / docker compose down
+# 日志：docker compose logs -f
+# 升级：在仓库根跑 .\cb-gateway\scripts\deploy.ps1
+#
+# 和笔记本上那套的区别只有两点：
+#   1. 网关绑 0.0.0.0（笔记本上是 127.0.0.1），这样 DSH 能从别的机器连进来。
+#      注意这会自动放开 app.ts 的 POST 环回 Host 闸，理由见 loopbackGateActive()。
+#   2. Trae 登录的回调必须写成**环回**，再由插件在本机转发进来（见下面的注释）。
+services:
+  cb-gateway:
+    # 镜像由 deploy.ps1 在开发机构建并 load 过来。这里**只引用不构建**：
+    # 写了 build 段的话 compose 会去找构建上下文，而服务器上没有 src/。
+    image: cb-gateway:local
+    container_name: cb-gateway
+    restart: unless-stopped
+    ports:
+      # 7801 网关本身；18801 只给 Trae 登录的回调用，登完可以一直开着
+      - "7801:7801"
+      - "18801:18801"
+    environment:
+      TZ: Asia/Shanghai
+      # 容器里必须监听所有网卡，否则 docker 的端口映射打不进来
+      QB_TRAE_LOGIN_HOST: "0.0.0.0"
+      QB_TRAE_LOGIN_PORT: "18801"
+      # 这个地址必须是**环回**：Trae 的授权页只肯把浏览器跳回环回地址。
+      #
+      # 2026-11-09 实测过两次：
+      #   环回            → 登录成功（22:36 那次，凭据有效期 11/23）
+      #   内网 192.168.1.100  → 浏览器始终没把请求发到 18801（容器日志零回调），
+      #                     Trae 页面直接报失败
+      # 分不清是 Trae 侧校验了回调地址，还是 Chrome 的 Private Network Access
+      # 拦了「公网页面 → 内网 IP」的跳转——两种都不在我们的控制范围内。
+      #
+      # 所以回调写成 127.0.0.1，由**插件**在本机把这端口转到网关（2026-11 起自动）：
+      # 网关在登录开始的瞬间通过 GET /api/events（SSE）推一条事件，插件的
+      # lib/tunnel.js 收到就开 TCP 转发，登录结束自动关。全程不需要人工 ssh。
+      #
+      # 手动兜底（插件没跑时）：
+      #   ssh -N -L 18801:127.0.0.1:18801 user@192.168.1.100
+      # 隧道只在登录那一次需要；凭据落盘后网关靠 refresh 自己续期。
+      QB_TRAE_CALLBACK_BASE: "http://127.0.0.1:18801"
+    volumes:
+      # data/ 里有：auth/ 凭据、state/ 签到记录、logs/、usage.jsonl 账本、
+      # cli/ 下载下来的 Qoder CLI（约 34MB）。全部要持久化。
+      - ./data:/app/data
+    # Qoder 的 CLI 常驻进程峰值约 700MB，静息约 290MB。留一倍余量，
+    # 超了让它 OOM 重启，而不是拖垮整台机器。
+    mem_limit: 1536m
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        # 探登录页而不是 /health：网关加了登录之后 /health 未认证时回 401，
+        # 拿它做健康检查会让容器一直是 unhealthy。登录页是公开的，只要服务在
+        # 就一定是 200。
+        - "fetch('http://127.0.0.1:7801/login').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

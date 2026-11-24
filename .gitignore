@@ -1,0 +1,52 @@
+# Credentials and secrets. data/ holds plaintext tokens, device ids and the
+# signing key — none of it may ever be committed.
+#
+# 目录改过两次名（QuotaBridge → CreditBridge、qb-gateway → cb-gateway）。
+# **每次改名都要同步改这一行**：改漏了不会报错，只会让下一次 git add -A 把
+# 明文凭据静默提交进去 —— 2026-11-10 就发生过一次，qb-gateway/data/ 这条规则
+# 在目录改名后失效，557 个文件（含 auth/keys.json 和 usage.jsonl）被提交。
+cb-gateway/data/
+
+# Local logs and generated caches
+*.log
+node_modules/
+*.tgz
+
+# IDE scratch
+.idea/
+
+# Build output from packaging/build.ps1
+dist/
+
+# DSH profile backups created by tools/sync-models.mjs and the config editor
+# live outside this tree (~/.dsh/profiles/desktop), listed here for completeness
+# in case a copy is ever made locally.
+*.bak-*
+
+# 不随代码发布的内容。放在仓库目录里（跟着代码走、随时能查），但 git 忽略掉。
+#
+#   private/docs/     逆向记录、协议分析、内部重构方案（含上游客户端逆向过程、
+#                     加固盾绕过方法、真实账号的余额数据）
+#   private/tools/    逆向探针脚本（qoder-probe / anti-re-probe / mitm / wsl-docker）
+#   private/probes/   解包出来的大文件：Qoder 的 asar + deb + CLI（2.8 GB）、
+#                     Loomy 的 asar + 截图（690 MB）。重新解一次就有，绝不入仓。
+#
+# 源码注释里的 `private/docs/xxx.md` 引用指向这里。
+private/
+
+# 兜底：万一哪天又从 private/ 里拷出来放到根目录
+.qoder-probe/
+loomy-recon/
+
+# Commit-message scratch files (git commit -F needs a file when the message
+# contains & or quotes) and one-off rename helpers.
+#
+# 注意：这几条只是兜底。真正的做法是把提交信息写到系统临时目录
+# （$env:TEMP）——2026-11 之前一直往仓库根目录扔，攒了 21 个 *.commit-msg.txt，
+# 虽然没进版本库，但每次 git status 和目录浏览都被它们污染。
+.git-commit-msg.txt
+*.commit-msg.txt
+*commit-msg.txt
+*.msg.txt
+.rename-*.mjs
+.move-gateway.ps1

@@ -1,0 +1,4 @@
+# Register the credit-bridge badge in the composer's right-hand strip.
+- insert:
+    - id: ui-credit-bridge
+      name: cb-dsh
