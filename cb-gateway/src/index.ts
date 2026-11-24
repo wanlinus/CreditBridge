@@ -7,7 +7,7 @@ import { config } from './config.ts';
 import { configureLogger, log } from './logger.ts';
 import { channels } from './channels/index.ts';
 import { loadAccounts } from './core/accounts.ts';
-import { applyCachedIdentities } from './core/channel-versions.ts';
+import { applyCachedIdentities, setVersionsLogger } from './core/channel-versions.ts';
 import { hasAnyCredential } from './core/keys.ts';
 import { createApp } from './app.ts';
 import { restrictAuthDirPermissions } from './shared/data-permissions.ts';
@@ -24,6 +24,7 @@ loadAccounts();
 
 // 库里的版本号要在 configure 之前覆盖进 identity：configure 会把它转发给各通道模块，
 // 之后改就晚了（见 channel-versions.ts 的 applyCachedIdentities）。
+setVersionsLogger(log);
 applyCachedIdentities();
 
 for (const channel of channels) {
