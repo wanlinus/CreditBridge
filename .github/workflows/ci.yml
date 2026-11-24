@@ -39,18 +39,18 @@ jobs:
     name: 类型检查 + 测试
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # pnpm 必须在 setup-node 之前：setup-node 的 `cache: pnpm` 要靠 pnpm 命令
       # 算出 store 路径，pnpm 还没装它会直接报错退出。
       # 用 pnpm/action-setup 而不是 corepack enable，因为它读 web/package.json 的
       # `packageManager` 字段，版本和本地一致、不会漂。
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           package_json_file: cb-gateway/web/package.json
 
       # 只装一次 Node：npm 和 pnpm 共用它。两个 cache 配置可以同时给。
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: pnpm
@@ -78,8 +78,7 @@ jobs:
         working-directory: cb-gateway/web
         run: pnpm build:only
 
-      # 47 套测试。其中 e2e-http 需要 web/dist（刚构建好）、smoke-chat 在没有
-      # QB_API_KEY 时会自己跳过。
+      # 14 套测试。其中 e2e-http 需要 web/dist（上一步刚构建好）。
       - name: 跑测试
         working-directory: cb-gateway
         run: npm test
@@ -92,15 +91,15 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # buildx 让 docker/build-push-action 能用缓存导出/导入。
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       # 只在推送时登录 GHCR；PR 里只构建不推。
       - name: 登录 GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -112,7 +111,7 @@ jobs:
       #   PR          → 不推（下面的 push 条件控制）
       - name: 生成镜像标签
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/creditbridge
           tags: |
@@ -125,7 +124,7 @@ jobs:
       # 不写 platforms：只构建 linux/amd64。服务器和开发机都是 amd64，
       # 加 arm64 会让构建时间翻倍且需要 QEMU 模拟。
       - name: 构建并推送
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./cb-gateway
           push: ${{ github.event_name != 'pull_request' }}
