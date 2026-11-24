@@ -23,7 +23,7 @@ import {
  * 上下文窗口的可选阶梯：50% / 75% / 100% of 这个模型自己的上限。
  *
  * 实现在 `shared/model-settings.ts`（凡是上游没给档位表的通道都用这套比例推三档），
- * 这里保留同名导出只为回归测试（`test/trae-config.mjs`）。
+ * 这里保留同名导出便于外部核对配置解析结果。
  */
 export { contextOptions } from '../../shared/model-settings.ts';
 

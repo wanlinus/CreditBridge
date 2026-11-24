@@ -274,7 +274,7 @@ function callbackUser(url: URL): { userId: string; username: string } {
   }
 }
 
-/** 导出是为了让 `test/callback.mjs` 能直接用真实回调串跑断言——这段解析错一次就登不上。 */
+/** 导出是为了能直接用真实回调串核对——这段解析错一次就登不上。 */
 export function parseCallback(url: URL): CallbackInfo | null {
   const rest = () => ({ host: callbackHost(url), ...callbackUser(url) });
   for (const key of ['authCodeInfo', 'authCode', 'auth_code', 'code']) {

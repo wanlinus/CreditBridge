@@ -311,41 +311,41 @@ v4 迁库前的残留（`usage.jsonl`、`auth/`、`accounts/`、`state/checkin/`
 
 ```bash
 npm run check      # tsc --noEmit，0 error 才算过
-npm test           # 30 套全跑，不需要网关、不需要真上游
+npm test           # 14 套全跑，不需要网关、不需要真上游
 ```
 
 | 命令 | 查什么 |
 |---|---|
 | `npm run check` | 类型检查。禁 `enum` / `namespace` / 构造器参数属性 / 装饰器（剥离器做不了） |
-| `npm run test:accounts` | 账号存储、序号不回收、状态机、凭据刷新（并发单飞）、ISO 有效期 |
-| `npm run test:persistence` | **落盘健壮性**：原子写（不留半截文件）、`config.json` 单一写入口（可见性和签到时间不互相覆盖）、凭据错误的永久/暂时分类 |
-| `npm run test:keys` | API key：生成格式、明文 secret 可回看、前缀筛候选、停用立刻失效、删除、最后使用时间 |
-| `npm run test:login` | 登录任务生命周期：取消、迟到结果作废、同通道再起一次取代旧的、正常完成仍落成账号 |
+| `npm run check:web` | `vue-tsc --noEmit`：前端 SPA 的类型检查 |
 | `npm run test:router` | 模型 id 拆解、显示名生成、报错文案 |
+| `npm run test:visibility` | 可见性的读写、坏文件容错 |
+| `npm run test:accounts` | 账号存储、序号不回收、状态机、凭据刷新（并发单飞）、ISO 有效期 |
+| `npm run test:keys` | API key：生成格式、明文 secret 可回看、前缀筛候选、停用立刻失效、删除、最后使用时间 |
+| `npm run test:auth` | 认证闸、改密闸、会话 Cookie |
+| `npm run test:persistence` | **落盘健壮性**：原子写（不留半截文件）、`config.json` 单一写入口（可见性和签到时间不互相覆盖）、凭据错误的永久/暂时分类 |
+| `npm run test:store-usage` | SQL 聚合口径：NULL 不变成 NaN、`tokens = prompt + completion`、`GROUP BY` 归一空值 |
+| `npm run test:usage` | `/api/usage` 的 14 天分桶、「今天 vs 全量/近 30 天」的边界 |
+| `npm run test:usage-hourly` | 单日 24 小时：**恒 24 项**、费用按每条记录自己的时刻分峰谷、未来/非法日期抛错 |
+| `npm run test:pricing` | 费用折算：缓存是 `prompt` 的**子集**（要减不能加，价差 50 倍）、峰谷按每条记录的 `ts` 分别计价、金额按量级给小数位、**按北京时间判断峰谷**（不看进程 TZ） |
+| `npm run test:checkin-scheduler` | 签到调度：`transient` 错误走 10/30/60 分钟阶梯、其他错误只重试一次、**通道返回 `status: 'error'` 记录（不抛异常）也必须进阶梯** |
+| `npm run test:checkin-switch` | 账号级签到开关：关掉的号不自动签、**跳过留一条 `skipped` 且每账号每天只一条**、**手动一键签到不受开关限制**、内存副本跟着变 |
 | `npm run test:routes` | 账号 × 模型列表、对话两条分支、429/401 改状态且**不换号**、**`/v1/*` 只认 Bearer 不认 Cookie** |
 | `npm run test:http` | 真起服务跑一遍（临时数据目录，端口 7899），页面/表单/接口边界 |
-| `npm run test:auth` | 认证闸、改密闸、会话 Cookie |
-| `npm run test:visibility` | 可见性的读写、坏文件容错、页面渲染 |
-| `npm run test:callback` / `test:credential` | 登录回调解析、凭据字段归一化（输入由上游决定，改了解析就跑） |
-| `npm run test:catalog` / `test:trae-config` / `test:qoder` / `test:usage` / `test:loomy-sign` | 目录解析、账本聚合（含按 mtime 缓存与坏行跳过）、Loomy 签名 |
-| `npm run test:loomy-usage` | Loomy 可用积分口径（`availableBalance` → `balance + dailyBalance` → `balance` 三层回退）。只读 `balance` 会少显示四成且不报错 |
-| `npm run check:web` | `vue-tsc --noEmit`：前端 SPA 的类型检查（后端是 `npm run check`） |
-| `npm run test:trae-usage-cache` | Trae 的 usage 缓存字段映射（上游 `cache_read_input_tokens` → pi-ai 认的 `prompt_tokens_details.cached_tokens`）。字段名对不上时 DSH 的「缓存命中」恒为 0，而且**不报任何错** |
-| `npm run test:checkin-scheduler` / `test:checkin-switch` / `test:checkin-log` / `test:trae-checkin` | 签到调度与时序、**账号级开关**（关掉的号不自动签、手动不受限、跳过留一条 `skipped`）、签到日志、Trae 领取的四种服务端状态（含「报 9074 但服务端已签到」要记 `already` 而不是 `error`） |
-| `npm run smoke:chat` | 真打一次对话。需要网关在跑 + `QB_API_KEY`，缺任一项自动跳过（exit 0） |
-| `npm run smoke:tools` | 真发一次带工具调用的对话。需要网关在跑 |
 
-**不在 `npm test` 里的有两套**：`smoke:tools`（要网关真的在 7801 上跑）与 `test:qoder-refresh`（`test/refresh-qoder.mjs`，**会真打上游、并把续期结果写回真实账号文件**；直接 `node` 跑它会自己跳过，要显式 `--live`，`npm run` 那条已带上）。它以前挂在 `npm test` 链上，只靠「没有 Qoder 账号就 exit 0」侥幸没出事，而这张表当时还把它写成「纯解析，不打网络」——两处都错，2026-11-12 一起改掉。
-
-`npm test` 把上面除这两套之外的全部串起来跑，**都不依赖网络**（`test:http` 会起本地服务，但只用临时目录和假凭据）。`smoke:chat` 挂在 `npm test` 里，但没有 `QB_API_KEY` 时自动跳过（exit 0）。
+**这些测试钉的都是「不会报错、只会让数字悄悄错」的地方**：SQL 写错不报错、字段映射漏了不报错、状态机串号不报错、峰谷算错不报错。改这几块必须跑。
 
 **别写死通道数**：`test:http` 里用注册表长度比对。它曾经写死 `3`，加 Loomy 之后一直红着——因为那套测试当时没进 `npm test`，没人看见。
 
-```powershell
-# 想真打一次对话（可选）
-$env:QB_API_KEY = 'sk-…'                      # /keys 页建的
-$env:QB_GATEWAY = 'http://192.168.1.100:7801'     # 可选，默认本机
-node test/smoke-chat.mjs wb-1/hy4free         # 不给 id 就取 /v1/models 第一个
+### 没有测试覆盖的部分
+
+逆向协议类的改动（上游字段映射、SSE 分帧、COSY 签名、各家的登录流程）**没有自动化测试**。
+那些代码改动频率低，改的时候本来就要真机验证：
+
+```bash
+# 起网关，加一个真账号，走一次对话
+docker run -d -p 7801:7801 -v cb-data:/app/data ghcr.io/wanlinus/creditbridge:latest
+# 浏览器 /accounts 登录 → /keys 建 key → curl 打一次 /v1/chat/completions
 ```
 
 改完必须重启网关，并验证 `/api/health`、`/v1/models`、`/api/accounts/<id>/credits`、至少一次对话（`/api/accounts/<id>/usage` 里能看到那一行、`account` 字段对得上）。

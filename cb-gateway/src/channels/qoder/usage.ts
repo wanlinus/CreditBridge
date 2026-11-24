@@ -264,7 +264,7 @@ function checkinDate(): string {
  * ## 为什么带 `at` 参数
  *
  * 这个分支一天只有 10:00 之前那一段才会走到，用真实时钟没法测。参数化之后
- * `test/qoder-window.mjs` 能把整天的边界都钉住。
+ * 改这段要真机验证一次跨天边界。
  */
 export function isBeforeCheckinWindow(at: number = Date.now()): boolean {
   const now = new Date(at);

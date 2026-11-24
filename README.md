@@ -260,7 +260,7 @@ CreditBridge/
 │  │  └─ shared/                 paths · sse · 定价 · 可见性 · 网关凭据
 │  ├─ web/                      前端 SPA（Vue 3 + Vite）
 │  ├─ scripts/deploy.ps1        构建镜像 → 传服务器 → 重启
-│  ├─ test/                     47 套，`npm test` 全跑
+│  ├─ test/                     14 套，`npm test` 全跑
 │  └─ data/                     凭据、账号、签到、用量、日志（**明文 token，勿提交**）
 ├─ cb-dsh/                      DSH 插件（host 半边 + client 半边）
 ├─ packaging/                   打包脚本
@@ -301,7 +301,7 @@ pnpm --dir web build:only
 # 检查 + 测试
 npm run check        # tsc --noEmit，必须 0 error
 npm run check:web    # vue-tsc
-npm test             # 47 套，一条命令全跑
+npm test             # 14 套，一条命令全跑
 
 # 本地起服务（改完想立刻试）
 npm start            # http://127.0.0.1:7801

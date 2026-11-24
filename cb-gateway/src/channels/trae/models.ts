@@ -148,7 +148,7 @@ function pickMaxDetail(info: any): any {
  *   - `features.access` 不含 `0`：会员专享（例如 `Kimi-K3.1-Pro`），免费号选了会被拒
  *   - 没有 `display_name` 或 `consumption_rate.rate`：配置占位项，不可用
  *
- * 导出只为回归测试（`test/trae-config.mjs`）。
+ * 导出便于外部核对配置解析结果。
  */
 export function parseTraeConfig(doc: any): TraeModelConfig[] {
   const groups = Array.isArray(doc?.function_configs) ? doc.function_configs : [];

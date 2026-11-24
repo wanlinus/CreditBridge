@@ -136,7 +136,7 @@ function countPromptChars(messages: any[]): number {
  * 账本读的是 `prompt_tokens` / `completion_tokens` / `credit`。这里如果传驼峰名
  * （`promptTokens`），类型上不报错（`ChatUsage` 是 `Record<string, unknown> & {...}`），
  * 但账本拿不到值——表现是 `usage_record.prompt_tokens` 全是 NULL、界面「今日 token」
- * 静默变 0。`test/qoder-sse.mjs` 有断言钉住。
+ * 静默变 0。改这段要真机验证一次对话。
  *
  * ## 缺字段就不写这个 key
  *

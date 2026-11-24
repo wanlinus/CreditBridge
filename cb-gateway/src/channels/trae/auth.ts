@@ -71,7 +71,7 @@ function log(...args: unknown[]) {
  * 只认一套那版踩过：读缓存时有效期一律变成 0，于是每次都被判定成「不如另一份长寿」，
  * 刚写进去的令牌当场被覆盖——面板还显示登录成功，实际用的是旧的那套，白登一次。
  *
- * 导出是给 `test/credential.mjs` 用的：两种形状都要能读回来，这条不能靠肉眼。
+ * 两种形状都要能读回来，这条不能靠肉眼。
  */
 export function normalizeCredential(auth: any) {
   const accountName = auth.account && typeof auth.account.username === 'string' ? auth.account.username : '';

@@ -88,45 +88,39 @@
 - 源码是 **TypeScript，无构建步骤**：`node src/index.ts` 直接跑（Node 22.18+ 原生剥离类型）。`.ts` 即产物，改完重启进程即可。
 - **不能写** `enum` / `namespace` / 构造器参数属性 / 装饰器——剥离器做不了，会直接 `SyntaxError`。
 - 类型检查：`npm run check`（`tsc --noEmit`），**0 error 才算过**。
-- **`npm test` 必须过（47 套全跑，一条命令）**。改代码前先认领自己会碰到哪几套：
-  改哪一块就跑哪几套（`npm test` 一条命令全跑，这里只是「改完先自查」的对照）：
+- **`npm test` 必须过（14 套全跑，一条命令）**。改哪一块跑哪几套：
 
   | 改什么 | 跑什么 |
   |---|---|
-  | 通道协议（`channels/*/upstream.ts`、`*/auth.ts` 的解析） | `test:callback` `test:credential` `test:trae-config` `test:trae-usage-cache` `test:loomy-credit` `test:catalog` `test:qoder`，外加 `test/loomy-sign.mjs`（无别名） |
-  | 余额读取的错误处理（任何 `creditsOf`） | `test:workbuddy-usage` |
-  | 账号维度（状态机、序号、凭据刷新） | `test:accounts` `test:persistence` |
-  | Trae 设备号 | `test:trae-device` |
-  | 签到领取 / 调度 | `test:trae-checkin` `test:checkin-scheduler`，外加 `test/qoder-checkin.mjs`（无别名） |
-  | 签到开关 | `test:checkin-switch` |
-  | 模型 id 拼拆 / 可见性 | `test:router` `test:visibility` |
-  | Qoder 上下文窗口 / prompt 限长 | `test:qoder-prompt-limit` `test:qoder-window` |
-  | Qoder COSY 签名 | `test:qoder-cosy`（联网版 `test:qoder-cosy-live` 不进 `npm test`，花积分） |
-  | Qoder SSE / 用量提取 | `test:qoder-sse` |
-  | Qoder 多账号 / 客户端断开 | `test:qoder-multi-account` `test:qoder-abort` |
+  | 模型 id 拼拆 / 显示名 | `test:router` |
+  | 可见性读写 | `test:visibility` |
+  | 账号状态机 / 序号 / 凭据刷新 | `test:accounts` |
+  | API key | `test:keys` |
+  | 认证闸 / 改密闸 / 会话 | `test:auth` |
   | 落盘（原子写、config.json） | `test:persistence` |
   | SQL / 账本聚合 | `test:store-usage` `test:usage` `test:usage-hourly` |
-  | 认证 / 路由边界 | `test:auth` `test:routes` |
-  | 余额读取（刷新积分） | `test/credits-refresh.mjs`（无别名） |
-  | 前端页面 | `npm run check:web` + `test:http` |
   | 费用折算 | `test:pricing` |
+  | 签到调度 / 重试阶梯 | `test:checkin-scheduler` |
+  | 签到开关 | `test:checkin-switch` |
+  | 路由边界 / `/v1/*` 只认 Bearer | `test:routes` |
+  | 前端页面 / 静态资源 | `test:http` + `npm run check:web` |
 
-  说明：表格里写 `test/xxx.mjs` 的那几个**没有 `npm run` 别名**，但**在 `npm test` 链里**，
-  改了照样会被跑到；想单独跑就 `node test/xxx.mjs`。
+  **这几套钉的都是「不会报错、只会让数字悄悄错」的地方**（细节在各自文件头注释里）：
+  - `test:store-usage`：SQL 写错不报错，只会让数字悄悄错（NULL 变 NaN、`GROUP BY` 没归一空值）
+  - `test:pricing`：缓存是 `prompt` 的**子集**（要减不能加，价差 50 倍）、峰谷按每条记录
+    自己的 `ts` 分别计价、**按北京时间判断峰谷**——2026-11-25 就是按进程本地时间判断，
+    在 UTC 的 CI 里算错 8 小时
+  - `test:checkin-scheduler`：通道返回 `status: 'error'` 记录（不抛异常）也必须进重试阶梯，
+    只测「假通道抛异常」会漏掉整条路径
+  - `test:checkin-switch`：跳过要留一条 `skipped`、手动签到不受开关限制、
+    内存副本要跟着变（只写 `store/` 会让 `/api/accounts` 读到旧对象）
+  - `test:accounts`：一错就是账本串号，而串号不会报错
 
-  **几条最容易踩的**（细节在各自测试文件的头注释里）：
-  - `test:trae-usage-cache` 钉字段映射：上游的 `cache_read_input_tokens` 不映射成
-    `cached_tokens`，DSH 的「缓存命中」恒为 0 且不报错
-  - `test:workbuddy-usage` 钉「5xx / 业务码非 0 / 非 JSON 必须抛错」——不抛的话
-    `totalRemain` 变 0，而 **0 是合法数字**，界面显示「剩余 0」像是额度用光了
-  - `test:checkin-scheduler` 钉「通道返回 `status: 'error'` 记录（不抛异常）也必须进重试阶梯」
-    ——三个通道都是返回记录而不是抛错，只测「假通道抛异常」会漏掉整条路径
-  - `test:qoder-cosy` 钉三件事：`Cosy-Key` 是原样透传不是算的、`.auth/user` 的解密密钥是
-    `machine_id` 前 16 字符、**wasm 只能执行一次**（两次会句柄串号）
-  - `test:qoder-sse` 钉「外层 200 + 内层 403」这种帧形态——只看 HTTP 状态码会误判成功
+  **逆向协议类的改动没有自动化测试**（上游字段映射、SSE 分帧、COSY 签名、各家登录流程）。
+  那些改动频率低，改的时候真机验证：起网关 → `/accounts` 登录 → `/keys` 建 key →
+  `curl` 打一次 `/v1/chat/completions` → 看 `/api/accounts/<id>/usage` 里有没有那一行。
 
 - `test/e2e-http.mjs` **不写死通道数**：加通道时用注册表长度比对。它曾经写死 `3`，加 Loomy 之后一直红着没人发现——因为它当时没进 `npm test`。
-- `npm test` 里含 `smoke:chat`（没有 `QB_API_KEY` 时自动跳过、exit 0）；不在 `npm test` 里的是两套：`smoke:tools`（要网关真的在 7801 上跑）与 `test:qoder-refresh`（**会真打上游、并把续期结果写回真实账号文件**，直接 `node` 跑会自己跳过，要显式 `--live`，`npm run` 那条已带上）。
 - 加通道 = 在 `src/channels/<name>/` 实现 `Channel` 契约（见 `src/types.ts`）+ 在 `src/channels/index.ts` 登记一行。**不要改 `app.ts` / `routes/*`**。
 - `data/` 里有明文 token、密钥缓存和账本，已 gitignore，**不得提交**。
 - **所有 API 都要登录**（2026-11 起）。两类凭据，**互相独立**：
