@@ -40,8 +40,18 @@ export function readConfigDoc(): ConfigDoc {
   }
 }
 
+/**
+ * 环境变量覆盖 `config.json`。容器部署时用 `QB_HOST=0.0.0.0` 指定监听地址，
+ * 不用手改 `data/config.json`——那个文件在卷里，镜像无法预设。
+ * 优先级：环境变量 > config.json > DEFAULTS。
+ */
 function loadConfig() {
-  return { ...DEFAULTS, ...readConfigDoc() };
+  const merged = { ...DEFAULTS, ...readConfigDoc() };
+  const envHost = (process.env.QB_HOST || '').trim();
+  if (envHost) merged.host = envHost;
+  const envPort = Number(process.env.QB_PORT);
+  if (Number.isInteger(envPort) && envPort > 0 && envPort < 65536) merged.port = envPort;
+  return merged;
 }
 
 /** 生效配置（内存副本）。运行期可变的项由 `updateConfig()` 原地更新。 */

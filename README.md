@@ -162,30 +162,28 @@ curl http://127.0.0.1:7801/v1/chat/completions \
 
 ## 部署到别的机器（可选）
 
-单机用不着这节。想在服务器上跑、DSH 在本地连过去，直接拉镜像就行：
+单机用不着这节。想在服务器上跑、DSH 在本地连过去，直接拉镜像：
 
 ```bash
 # 在服务器上
-docker pull ghcr.io/wanlinus/creditbridge:latest
-
 mkdir -p ~/docker/cb-gateway/data
 cd ~/docker/cb-gateway
 
-cat > compose.yaml <<'EOF'
-services:
-  cb-gateway:
-    image: ghcr.io/wanlinus/creditbridge:latest
-    container_name: cb-gateway
-    restart: unless-stopped
-    ports:
-      - "7801:7801"
-      - "18801:18801"
-    volumes:
-      - ./data:/app/data
-EOF
+# 直接用仓库里那份，不要手写——它带了容器必需的环境变量
+curl -fsSLO https://raw.githubusercontent.com/wanlinus/CreditBridge/master/cb-gateway/compose.yaml
 
 docker compose up -d
 ```
+
+**`compose.yaml` 里有两个环境变量是必需的**，手写时容易漏：
+
+| 变量 | 值 | 漏了会怎样 |
+|---|---|---|
+| `QB_HOST` | `0.0.0.0` | 容器只听环回，端口映射打不进来，浏览器连不上 |
+| `QB_TRAE_CALLBACK_BASE` | `http://127.0.0.1:18801` | Trae 登录回调失败（授权页只认环回） |
+
+这两个用环境变量而不是改 `data/config.json`，是因为那个文件在卷里、镜像无法预设。
+优先级是 **环境变量 > `config.json` > 默认值**。
 
 服务器上只有 `compose.yaml` 和 `data/`，**没有源码**。
 

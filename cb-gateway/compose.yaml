@@ -11,6 +11,8 @@ services:
     environment:
       TZ: Asia/Shanghai
       # 容器内必须监听所有网卡，否则端口映射打不进来。
+      # 用环境变量而不是改 data/config.json：那个文件在卷里，镜像无法预设。
+      QB_HOST: "0.0.0.0"
       QB_TRAE_LOGIN_HOST: "0.0.0.0"
       QB_TRAE_LOGIN_PORT: "18801"
       QB_TRAE_CALLBACK_BASE: "http://127.0.0.1:18801"
