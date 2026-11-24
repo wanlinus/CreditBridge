@@ -141,7 +141,10 @@
 - **路径分三层，改代码前先认清自己在哪层**：管理 API（`/api/*`，两种凭据，JSON）· OpenAI 兼容（`/v1/*`，只认 Bearer key）· 前端 SPA（其余一切，公开静态文件）。旧的「页面层 + 页面动作层」已删（2026-11-13）。分层表和每条规矩见 `cb-gateway/ARCHITECTURE.md` §六；`/v1/*` 里除了 `models` 和 `chat/completions` 不许放别的。
 - **读请求体只走 `shared/json-body.ts` 的 `readJsonBody()`**：7 个写端点原先各写一遍 `JSON.parse(await c.req.text())`，而**行为不一致**——`POST /api/keys` 那处坏 JSON 静默当 `{}`，于是半截 JSON 会成功建出一把名叫「未命名」的 key。现在统一：坏 JSON 一律 400，空 body 当 `{}`。它只返回 `{ok, body}` 或 `{ok:false, message}`，**错误信封由各路由自己拼**（`/api/*` 用 `bad_request`，`/v1/*` 用 `gateway_error`，因为 DSH 那侧按 OpenAI 形状解析）。
 - 改完必须重启网关，并验证 `/api/health`、`/v1/models`、`/api/accounts/<id>/credits`、至少一次对话（`/api/accounts/<id>/usage` 里能看到那一行、`account` 字段对得上）。
-- **部署到 192.168.1.100**：在仓库根跑 `.\cb-gateway\scripts\deploy.ps1`（本地构建镜像 → save/gzip → scp → 远端 load + `compose up -d --force-recreate`）。**服务器上只有 `compose.yaml` 和 `data/`，没有源码**，所以在服务器上 `docker compose build` 会失败——改代码只能改开发机再重新部署。前端产物要在部署前 `npm run build:web`。
+- **部署到 192.168.1.100**：在仓库根跑 `.\cb-gateway\scripts\deploy.ps1 -Server <地址>`（本地构建镜像 → save/gzip → scp → 远端 load + `compose up -d --force-recreate`）。**服务器上只有 `compose.yaml` 和 `data/`，没有源码**，所以在服务器上 `docker compose build` 会失败——改代码只能改开发机再重新部署。前端产物要在部署前 `npm run build:web`。
+- **Dockerfile 是多阶段构建**（2026-11-25 改）：`web` 阶段用 pnpm 编译前端，`COPY --from=web` 拿产物。所以 `docker build .` 一步到位，不依赖本机先跑 `build:web`。改 Dockerfile 时注意两点：① 前端产物来自 `--from=web` 的 `/build/dist`，不是 `COPY web/dist`；② `web/package.json` 的 `packageManager` 字段决定 CI 用哪个 pnpm 版本，改它等于改 CI。
+- **CI 在 `.github/workflows/ci.yml`**：`check` job（类型检查 + 测试）过了才跑 `image` job（构建镜像推 GHCR）。CI 里的命令和本地完全一致，改 `package.json` 的 scripts 会同时影响两边。
+- **`npm test` 依赖 `web/dist`**：`test/e2e-http.mjs` 验证静态资源托管，没产物会有 1 项失败（`/accounts 页面带 Cookie → 200`）。CI 里顺序是「先 build 再 test」，本地手动跑也要注意。
 - 本地跑：`POST /api/shutdown` 停掉，再用 DSH runtime 的 node 起 `src/index.ts`。插件**不提供启停开关**（它只会拉起本地的第二份网关），只负责记住网关地址（见 `cb-dsh` 一节）。
 
 ## 平台坑（Windows）

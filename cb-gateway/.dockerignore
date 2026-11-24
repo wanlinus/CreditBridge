@@ -1,21 +1,30 @@
 # 不进货架的东西。
 #
 # 判据是「镜像里要不要」：
-#   node_modules  依赖在镜像里 npm ci 装，不需要把本机的带进构建上下文
+#   node_modules  依赖在镜像里装，不需要把本机的带进构建上下文
 #   data          明文凭据和账本，走卷
 #   test/tools    只在开发机上用
 #   .qoder-probe  逆向时的临时产物，可能上百 MB
 #
-# **`dist` 不能排除**（2026-11-12 改）：v3 的 `COPY web/dist ./web/dist` 需要它。
-# 之前有一条裸 `dist`（本想排除打包脚本的输出），但 Docker 的忽略是全局的——它会把
-# `web/dist` 一起排掉，表现是 `COPY` 报 "not found"，而本地明明有这个目录。
+# **不要排除 web/dist**：现在多阶段构建会在镜像里自己编译（`COPY web/`），
+# 但本机如果已经有 dist 也没关系，被 `pnpm build:only` 覆盖。
+#
+# 也不要排除 web/src：多阶段构建要拷进去编译。
 node_modules
+web/node_modules
 data
 test
 tools
 .qoder-probe
 *.tgz
 *.log
-*.md
+
+# 文档不进镜像：运行时不需要。但**不要用 `*.md` 一刀切**——web/ 里可能有构建
+# 需要的 md（比如某些 vite 插件读 README），而且排除规则是全局的。
+# 这里只排顶层和已知的大文件。
+README.md
+ARCHITECTURE.md
+API.md
+
 Dockerfile
 compose.yaml

@@ -1,0 +1,141 @@
+# GitHub Actions：检查 + 打包 Docker 镜像
+#
+# 两个 job，故意分开：
+#
+#   check   类型检查 + 全量测试。失败就停，不浪费构建时间。
+#   image   构建镜像并推到 GHCR（GitHub Container Registry）。
+#
+# 为什么用 GHCR 而不是 Docker Hub：GHCR 用仓库自带的 GITHUB_TOKEN 就能推，
+# 不需要在仓库设置里配 DOCKERHUB_USERNAME / DOCKERHUB_TOKEN 两个 secret。
+# 别人 clone 下来想用镜像，`docker pull ghcr.io/wanlinus/creditbridge:latest` 就行。
+#
+# 镜像里前端是多阶段构建（见 cb-gateway/Dockerfile），CI 不需要先跑 build:web。
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+# 同一分支的新推送取消旧的运行：PR 里连推几次不用排队等前面那次跑完。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 测试里有一些会起本地服务器（e2e-http 用 7899），CI 环境干净，不用特别处理。
+  # 这个变量让 Node 别输出实验性特性的警告，日志干净些。
+  NODE_NO_WARNINGS: '1'
+
+jobs:
+  check:
+    name: 类型检查 + 测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm 必须在 setup-node 之前：setup-node 的 `cache: pnpm` 要靠 pnpm 命令
+      # 算出 store 路径，pnpm 还没装它会直接报错退出。
+      # 用 pnpm/action-setup 而不是 corepack enable，因为它读 web/package.json 的
+      # `packageManager` 字段，版本和本地一致、不会漂。
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: cb-gateway/web/package.json
+
+      # 只装一次 Node：npm 和 pnpm 共用它。两个 cache 配置可以同时给。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: |
+            cb-gateway/package-lock.json
+            cb-gateway/web/pnpm-lock.yaml
+
+      - name: 装网关依赖
+        working-directory: cb-gateway
+        run: npm ci
+
+      - name: 类型检查（网关）
+        working-directory: cb-gateway
+        run: npm run check
+
+      - name: 装前端依赖
+        working-directory: cb-gateway/web
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查（前端）
+        working-directory: cb-gateway/web
+        run: pnpm check
+
+      - name: 构建前端
+        working-directory: cb-gateway/web
+        run: pnpm build:only
+
+      # 47 套测试。其中 e2e-http 需要 web/dist（刚构建好）、smoke-chat 在没有
+      # QB_API_KEY 时会自己跳过。
+      - name: 跑测试
+        working-directory: cb-gateway
+        run: npm test
+
+  image:
+    name: 构建镜像
+    runs-on: ubuntu-latest
+    needs: check
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # buildx 让 docker/build-push-action 能用缓存导出/导入。
+      - uses: docker/setup-buildx-action@v3
+
+      # 只在推送时登录 GHCR；PR 里只构建不推。
+      - name: 登录 GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 标签规则：
+      #   master 分支  → latest + edge
+      #   v1.2.3 这样的 tag → 1.2.3 / 1.2 / latest
+      #   PR          → 不推（下面的 push 条件控制）
+      - name: 生成镜像标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/creditbridge
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=edge,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=ref,event=pr
+
+      # 不写 platforms：只构建 linux/amd64。服务器和开发机都是 amd64，
+      # 加 arm64 会让构建时间翻倍且需要 QEMU 模拟。
+      - name: 构建并推送
+        uses: docker/build-push-action@v6
+        with:
+          context: ./cb-gateway
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GitHub Actions 的缓存后端，第二次构建能复用 npm ci / pnpm install 层。
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: 镜像摘要
+        run: |
+          echo "### 镜像已推送" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

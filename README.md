@@ -208,6 +208,7 @@ DSH 插件相关的问题见 [cb-dsh/README.md](cb-dsh/README.md)。
 
 ```
 CreditBridge/
+├─ .github/workflows/ci.yml    CI：类型检查 + 测试 + 构建镜像推 GHCR
 ├─ cb-gateway/                 网关（TypeScript，无构建步骤）
 │  ├─ src/
 │  │  ├─ index.ts app.ts         启动 / Hono 实例
@@ -246,13 +247,47 @@ CreditBridge/
 
 ```bash
 cd cb-gateway
+
+# 装依赖（网关用 npm，前端用 pnpm）
+npm ci
+cd web && pnpm install && cd ..
+
+# 构建前端 —— **必须先跑，否则 e2e-http 那套会失败**
+pnpm --dir web build:only
+
+# 检查 + 测试
 npm run check        # tsc --noEmit，必须 0 error
 npm run check:web    # vue-tsc
 npm test             # 47 套，一条命令全跑
 ```
 
+> **`npm test` 依赖 `web/dist`**：`test/e2e-http.mjs` 要验证静态资源能被托管。
+> 没构建前端时它会有 1 项失败（`/accounts 页面带 Cookie → 200`），
+> 看起来像代码坏了，其实只是缺产物。
+
 加通道改两处：新建 `src/channels/<name>/`，再在 `src/channels/index.ts` 加一行。
 不需要动 `app.ts` / `routes/*` / 前端。
+
+### CI
+
+推送到 `master` 或提 PR 时，GitHub Actions 自动跑（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）：
+
+| job | 干什么 |
+|---|---|
+| `check` | 装依赖 → 类型检查（网关 + 前端）→ 构建前端 → `npm test` |
+| `image` | 构建 Docker 镜像推到 GHCR，依赖 `check` 通过 |
+
+镜像地址（公开，不用登录就能 pull）：
+
+```bash
+docker pull ghcr.io/wanlinus/creditbridge:latest
+docker run -d -p 7801:7801 -v /你的/data:/app/data ghcr.io/wanlinus/creditbridge:latest
+```
+
+标签规则：`master` → `latest` + `edge`；打 `v1.2.3` 这样的 tag → `1.2.3` + `1.2` + `latest`。
+PR 只构建不推送。
+
+镜像**多阶段构建**：前端在镜像里用 pnpm 编译，不需要你先在本机 `build:web`。
 
 ---
 
