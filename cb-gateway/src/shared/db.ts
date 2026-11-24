@@ -25,7 +25,7 @@ db.exec('PRAGMA synchronous = NORMAL');
 db.exec('PRAGMA foreign_keys = ON');
 
 /** 当前 schema 版本。加表/改列时 +1，并在 `MIGRATIONS` 里追加一段。 */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 /** 按版本顺序排列的迁移，数组下标 = 从哪个版本升上来的。**不加 `IF NOT EXISTS`**：那会掩盖「版本号和实际结构不一致」；不做 down migration，回滚就是删库重来。 */
 const MIGRATIONS: string[] = [
@@ -155,6 +155,19 @@ const MIGRATIONS: string[] = [
   // v3：账号级签到开关。加列而不是塞进 `profile` JSON——那个每次登录都重写，会丢。
   `
   ALTER TABLE account ADD COLUMN checkin_enabled INTEGER NOT NULL DEFAULT 1;
+  `,
+
+  // v4：上游版本号缓存。上游升级后不让老客户端请求时，靠这张表跟上，不用改代码重新部署。
+  // 按 (通道, 字段) 存而不是一行 JSON：加字段不用改结构，且能单独标每个字段的取数时间。
+  `
+  CREATE TABLE channel_version (
+    channel_id TEXT NOT NULL,
+    field      TEXT NOT NULL,
+    value      TEXT NOT NULL,
+    source     TEXT NOT NULL,
+    fetched_at INTEGER NOT NULL,
+    PRIMARY KEY (channel_id, field)
+  );
   `,
 ];
 

@@ -23,7 +23,7 @@ const CLIENT_ID = 'e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb';
 
 // 官方 CLI 的 `User-Agent: qoder/<version>`。**这是唯一的版本号来源**：`/health` 的
 // `clientVersion`、请求头的 `cosy-version`、模型列表的 `minimal_version.cli` 门禁都要跟它一致。
-export const QODER_CLI_VERSION = '1.1.79-hotfix.19';
+export const QODER_CLI_VERSION = '0.5.17';
 
 const USER_AGENT = `qoder/${QODER_CLI_VERSION}`;
 

@@ -3,7 +3,8 @@
 // 坑：上游按**设备**记签到（`did_checked_in` 逐设备不同），同机多号不能共用一个 `x-device-id`。
 
 import { defineChannel } from '../types.ts';
-import { configureTraeIdentity, mintSelfDeviceId, setTraeLogger } from './auth.ts';
+import type { IdentityPatch } from '../../types.ts';
+import { configureTraeIdentity, fetchTraeManifest, mintSelfDeviceId, setTraeLogger } from './auth.ts';
 import { traeCatalog, traeModelList, setTraeModelsLogger } from './models.ts';
 import { chatTrae, setTraeUpstreamLogger } from './upstream.ts';
 import { loginLoopback as traeLoginLoopback, runTraeLogin } from './login.ts';
@@ -29,6 +30,20 @@ export const traeChannel = defineChannel({
     clientVersion: '1.107.1',
     channelVersion: '2.3.102035',
     appVersion: '3.4.17',
+  },
+
+  /**
+   * 上游的版本 manifest。`clientVersion`（换令牌门禁）**故意不更新**：它一直是 1.107.1，
+   * 自动改可能触发上游校验；另外两个跟着客户端走。
+   */
+  async fetchIdentity() {
+    const manifest = await fetchTraeManifest();
+    const patch: IdentityPatch = {};
+    // URL 形如 `.../releases/stable/2.3.106768/win32/TRAE_CN-Setup-x64.exe`，构建号在路径里。
+    const build = /\/stable\/([^/]+)\//.exec(manifest.downloadUrl);
+    if (build) patch.channelVersion = build[1];
+    if (manifest.appVersion) patch.appVersion = manifest.appVersion;
+    return patch;
   },
 
   configure(ctx) {

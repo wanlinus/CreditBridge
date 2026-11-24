@@ -20,6 +20,13 @@ export interface ChannelIdentity {
   appVersion?: string;
 }
 
+/**
+ * 从上游拉到的版本号。只覆盖该通道**允许自动更新**的字段：
+ * 换令牌的门禁字段（`clientVersion`）不自动改，自动改可能触发上游校验。
+ */
+export type IdentityPatch = Partial<Pick<ChannelIdentity, 'channelVersion' | 'ideVersion' | 'appVersion'>>;
+
+
 export interface TraeCredential {
   token: string;
   refreshToken: string;
@@ -203,6 +210,16 @@ export interface Channel {
 
   /** 报给上游的客户端身份（版本号串）。必填：写死会烂，见 `ChannelIdentity`。 */
   identity: ChannelIdentity;
+
+  /**
+   * 去上游查最新版本号，返回**允许自动更新**的那几个字段（见 `IdentityPatch`）。
+   *
+   * 上游升级后不让老客户端请求时，靠它把版本号跟上，不用改代码重新部署。
+   * 不实现就是「这个通道没有可查的更新源」，一直用 `identity` 里的写死值。
+   * **失败必须抛错**：路由会保留旧值并在 `/api/health` 标 `versionSource: 'cached'`，
+   * 静默返回空对象会让「查失败」和「上游没给版本」分不清。
+   */
+  fetchIdentity?(): Promise<IdentityPatch>;
 
   configure?(ctx: ChannelContext): void;
 
