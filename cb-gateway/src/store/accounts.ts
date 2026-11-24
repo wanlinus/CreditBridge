@@ -1,21 +1,16 @@
-// 上游账号表（`account` + `account_seq`）——**唯一允许出现 SQL 的地方之一**。
+// 上游账号表（`account` + `account_seq`）——**唯一允许出现 SQL 的地方之一**。这里只管存取，
+// 状态机、序号分配、凭据刷新、并发单飞全部留在 `core/accounts.ts`。
 //
-// 这里只管存取。**状态机、序号分配、凭据刷新、并发单飞全部留在 `core/accounts.ts`**：
-// 那些是策略，换存储不该动它们。
-//
-// 两条不变量在库这一层由结构保证，不靠调用方记得：
-//
-//   ① `account_seq` 是**只增不减**的游标，和 `account` 分开存。只看现存账号的话，
-//      删掉 3 号之后新加的号会拿到 3，而账本里那批「旧的 3 号」的历史会算到新号头上。
-//   ② `UNIQUE(channel_id, seq)` —— 同一个通道里序号不许重复。撞了会当场抛，而不是
-//      让两个账号共用一个号、把账算混。
+// 两条不变量由结构保证：① `account_seq` 是**只增不减**的游标，和 `account` 分开存——只看现存
+// 账号的话，删掉 3 号之后新加的号会拿到 3，账本里那批「旧的 3 号」的历史会算到新号头上；
+// ② `UNIQUE(channel_id, seq)` 让序号撞车当场抛，而不是两个账号共用一号。
 
 import { db } from '../shared/db.ts';
 import type { Account, AccountStatus } from '../types.ts';
 
 const STATUSES: AccountStatus[] = ['ready', 'cooldown', 'invalid', 'disabled'];
 
-/** 数据库行 → 领域对象。列名映射只有这一处；JSON 文本在这里解析回对象。 */
+/** 列名映射只有这一处；JSON 文本在这里解析回对象。 */
 function rowToAccount(row: any): Account | null {
   const status = STATUSES.includes(row.status) ? (row.status as AccountStatus) : 'invalid';
   const seq = Number(row.seq);
@@ -32,15 +27,14 @@ function rowToAccount(row: any): Account | null {
     cooldownUntil: typeof row.cooldown_until === 'number' ? row.cooldown_until : null,
     statusMessage: typeof row.status_message === 'string' ? row.status_message : null,
     profile: parseObject(row.profile),
-    // 老行（v3 迁移之前建的）拿到的是列默认值 1；`!== 0` 比 `=== 1` 宽容，
-    // 手改库写成 2 之类也不会把签到静默关掉。
+    // 老行拿到的是列默认值 1；`!== 0` 比 `=== 1` 宽容，手改库写成 2 也不会把签到静默关掉。
     checkinEnabled: Number(row.checkin_enabled) !== 0,
     createdAt: Number(row.created_at) || 0,
     updatedAt: Number(row.updated_at) || 0,
   };
 }
 
-/** 凭据是通道自己的形状，一个字段都不认识，原样解析。坏 JSON 当没有。 */
+/** 凭据是通道自己的形状，原样解析。坏 JSON 当没有。 */
 function parseJson(raw: unknown): any {
   if (typeof raw !== 'string' || raw === '') return null;
   try {
@@ -55,7 +49,6 @@ function parseObject(raw: unknown): Record<string, any> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
-/** 全部账号。启动时读一次进内存缓存，之后以内存为准。 */
 export function listAccounts(): Account[] {
   const rows = db.prepare('SELECT * FROM account ORDER BY channel_id, seq').all() as any[];
   const out: Account[] = [];
@@ -66,7 +59,7 @@ export function listAccounts(): Account[] {
   return out;
 }
 
-/** 新增或整行覆盖。凭据和 profile 序列化成 JSON 文本——四个通道的字段完全不同。 */
+/** 凭据和 profile 序列化成 JSON 文本——四个通道的字段完全不同。 */
 export function upsertAccount(account: Account): void {
   db.prepare(
     `INSERT OR REPLACE INTO account
@@ -82,34 +75,28 @@ export function upsertAccount(account: Account): void {
     account.cooldownUntil,
     account.statusMessage,
     JSON.stringify(account.profile || {}),
-    // SQLite 没有 boolean：存 0/1。`INSERT OR REPLACE` 会整行覆盖，所以调用方
-    // 必须把现有的 checkinEnabled 一起传进来，否则一次状态更新就会把开关重置。
+    // SQLite 没有 boolean：存 0/1。`INSERT OR REPLACE` 会整行覆盖，所以调用方必须把现有的
+    // checkinEnabled 一起传进来，否则一次状态更新就会把开关重置。
     account.checkinEnabled === false ? 0 : 1,
     account.createdAt,
     account.updatedAt,
   );
 }
 
-/**
- * 删账号。返回是否真的删了。
- *
- * **签到状态由外键级联删除**：`checkin_state.account REFERENCES account(id) ON DELETE CASCADE`。
- * 这正是进库的收益之一——文件时代要靠 `removeAccount()` 记得删 `state/checkin/<id>.json`，
- * 实测漏了（`tr-1` / `tr-2` 的账号早删了、状态文件还在）。
- */
+/** 签到状态由外键级联删除——文件时代漏删过状态文件。 */
 export function deleteAccount(id: string): boolean {
   const result = db.prepare('DELETE FROM account WHERE id = ?').run(id);
   return Number(result.changes) > 0;
 }
 
-/** 读序号游标；没有就是 0（该通道还没加过号）。 */
+/** 读序号游标；没有就是 0。 */
 export function readSeqCursor(channelId: string): number {
   const row = db.prepare('SELECT seq FROM account_seq WHERE channel_id = ?').get(channelId) as { seq?: number } | undefined;
   const value = Number(row?.seq);
   return Number.isInteger(value) && value > 0 ? value : 0;
 }
 
-/** 写序号游标。只增不减——调用方传更小的值时这里会拒绝（返回实际生效的值）。 */
+/** 只增不减——调用方传更小的值时这里会拒绝（返回实际生效的值）。 */
 export function writeSeqCursor(channelId: string, seq: number): number {
   const current = readSeqCursor(channelId);
   const next = Math.max(current, seq);

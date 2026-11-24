@@ -1,22 +1,10 @@
-// Host half of cb-dsh.
+// 插件的 host 半边：给 client 挂 Loader 行、记住网关地址供面板读写。
 //
-// 两个职责：
-//   1. 给 client 模块系统一个 Loader 行，挂上 lib/client.js；
-//   2. 记住「网关地址」，提供给面板读写。
+// **不管网关启停。** 早先有 /start /stop 会在本机 spawn 一份网关，那只会和容器里那份
+// 抢同一批凭据；启停归 docker compose。2026-11 连同 spawnGateway 一起删了。
 //
-// **这里不再管网关的启停。** 早先有个 7802 上的 /start 与 /stop：本机 spawn
-// `src/index.ts`，靠 `--parent-pid` 把网关的命绑在 DSH 进程上。2026-11 之后网关
-// 搬进开发机的 Docker 容器，本机已经没有可 spawn 的东西了：
-//
-//   - 那个开关只会去拉起一个**本地的第二份网关**，和容器里那份抢同一批凭据；
-//   - 网关的启停现在归 Docker（`docker compose up -d` / `down`），不需要界面代劳。
-//
-// 所以开关连同定位路径的 GATEWAY_CANDIDATES、resolveGatewayDir、spawnGateway、
-// requestStop 一起删掉了。插件就剩「配置 + 展示」。
-//
-// 端口：本机这个控制服务默认 7802，只监听 127.0.0.1。
-// 可用 QB_DSH_CONTROL_PORT 覆盖——端口被占时能挪开，也方便脱离 DSH 单独测这个模块
-// （client 半边只探测 7802…7811，挪出这个区间面板就连不上，所以仅用于排查）。
+// 控制服务默认 7802，只监听 127.0.0.1。`QB_DSH_CONTROL_PORT` 可覆盖——但 client 半边
+// 只探测 7802…7811，挪出这个区间面板就连不上，仅用于排查。
 
 import fs from 'node:fs';
 import http from 'node:http';

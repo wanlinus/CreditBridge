@@ -1,10 +1,6 @@
-// Trae CN 的凭据：刷新 + 请求头。
-//
-// 这里只管**只有 Trae 上游知道**的东西：令牌怎么刷、DeviceProof 怎么签、请求头长
-// 什么样。凭据只有一个来源——账号文件，由登录流程写入、由账号层传进来。
-//
-// 设备密钥对（登录时生成的 EC P-256）跟着凭据一起存，因为刷新时的签名必须用
-// **登录时注册的那把**，换一对必然验签失败。
+// Trae CN 的凭据：刷新 + 请求头。只管**只有 Trae 上游知道**的东西：令牌怎么刷、
+// DeviceProof 怎么签、请求头长什么样。
+// 坑：刷新签名必须用**登录时注册的那把 EC P-256 私钥**，换一对必然验签失败——所以密钥对跟着凭据存。
 
 import crypto from 'node:crypto';
 
@@ -19,27 +15,16 @@ const APP_ID = '6eefa01c-1036-4c7e-9ca5-d891f63bfcd8';
 /** OAuth 客户端 id，登录换令牌和后续刷新都用它（取自客户端的 product.json）。 */
 export const TRAE_CLIENT_ID = 'ono9krqynydwx5';
 
-// 对话走这个上游。Trae 把对话流量从 api.trae.cn 移走了（那边 agent 路由现在 404），
-// 改由这个 host 提供。
+// 对话走这个上游。Trae 把对话流量从 api.trae.cn 移走了（那边 agent 路由现在 404）。
 export const TRAE_CHAT_BASE = 'https://trae-api-cn.mchost.guru';
 
 /**
- * 客户端身份串：报给上游的版本号。**值由通道声明**（`traeChannel.identity`），
- * 启动时经 `configureTraeIdentity()` 传进来；这里只留一份默认值兜底，供单独跑
- * `npm run login` 这类没有经过 `configure()` 的场景使用。
- *
- * `clientVersion` 是桌面端 `product.json` 的 `version`（上游拿它当「客户端够不够新」
- * 的门禁，写错会得到 401 `20405 Device proof required`）；`buildVersion` 是同文件
- * 的 `tronBuildVersion`（授权 URL 的 `plugin_version`）。两者不是一个东西。
+ * 报给上游的客户端版本号。**值由通道声明**（`traeChannel.identity`），经 `configureTraeIdentity()` 传进来，
+ * 这里只留默认值兜 `npm run login` 这类没走 `configure()` 的场景。`clientVersion` 写错会得到 401 `20405`。
  */
 export let TRAE_CLIENT_VERSION = '1.107.1';
 export let TRAE_BUILD_VERSION = '2.3.100185';
-/**
- * 账号接口（签到/额度）的 `x-app-version` 头。product.json 的 `appVersion`。
- *
- * 版本号写死会烂（和 `clientVersion` 同一个坑），所以收进 identity 由通道自述，
- * 这里只留一份默认值兜「没走 `configure()`」的场景（`npm run login`）。
- */
+/** 账号接口（签到/额度）的 `x-app-version` 头，product.json 的 `appVersion`——和 `clientVersion` 不是一个字段。 */
 export let TRAE_APP_VERSION = '3.4.17';
 
 /** 启动时由通道把自述身份注入进来。没调用过就沿用上面的默认值。 */
@@ -59,19 +44,9 @@ function log(...args: unknown[]) {
   if (logSink) logSink(`[trae-auth] ${args.join(' ')}`);
 }
 
-// ---------------------------------------------------------------- 凭据形状
-
 /**
- * 把上游返回的凭据字段归一化。
- *
- * 字段名有两套，这里都要认：
- *   - 换令牌接口 / 桌面客户端：`expiredAt` / `refreshExpiredAt` / `account.username` / `host`
- *   - 账号文件里存下来的：`expiresAt` / `refreshExpiresAt` / `username` / `refreshBase`
- *
- * 只认一套那版踩过：读缓存时有效期一律变成 0，于是每次都被判定成「不如另一份长寿」，
- * 刚写进去的令牌当场被覆盖——面板还显示登录成功，实际用的是旧的那套，白登一次。
- *
- * 两种形状都要能读回来，这条不能靠肉眼。
+ * 把上游返回的凭据字段归一化。字段名有**两套**都要认（`expiredAt`/`host` 与 `expiresAt`/`refreshBase`）：
+ * 只认一套踩过——读缓存时有效期一律变 0，刚写进去的令牌被判「不如另一份长寿」而覆盖，面板还显示登录成功。
  */
 export function normalizeCredential(auth: any) {
   const accountName = auth.account && typeof auth.account.username === 'string' ? auth.account.username : '';
@@ -97,40 +72,18 @@ export function normalizeCredential(auth: any) {
 }
 
 /**
- * 造一个 16 位十进制设备号，和客户端 aha 注册回来的同形。
- *
- * 用随机数而不是拿硬件指纹去算：我们复刻不了 metasecml 的签名流程，也没必要——
- * 这个号的作用只是让服务端能把「一个账号的签到状态」和别处区分开，
- * 它不需要可验证、不需要跨机器复现，只需要**这个账号稳定**。
+ * 造一个 16 位十进制设备号，和客户端 aha 注册回来的同形。用随机数而不是硬件指纹：复刻不了 metasecml 的
+ * 签名流程，也没必要——这个号只需让服务端能把「一个账号的签到状态」区分开，**不需要可验证、只需账号稳定**。
  */
 export function mintSelfDeviceId() {
-  // 逐位生成：`crypto.randomInt` 的上限是 2^48，一次要 10^15 会直接抛
-  // ERR_OUT_OF_RANGE，所以别图省事写成一次 randomInt(0, 10**15)。
+  // 逐位生成：`crypto.randomInt` 上限是 2^48，一次要 10^15 会抛 ERR_OUT_OF_RANGE。
   let id = String(crypto.randomInt(1, 10));
   for (let i = 0; i < 15; i += 1) id += String(crypto.randomInt(0, 10));
   return id;
 }
 
-/**
- * 账号接口该用哪个设备号。
- *
- * 优先级：aha 注册号 → 该账号自己的自造号。`machineId`（64 位十六进制遥测号）
- * **不参与**：它不是账号接口认的设备身份。
- *
- * ## 为什么自造号是「每账号一份」
- *
- * 上游按**设备**记签到：同一个账号今天用不同 `x-device-id` 查
- * `checkin_credits/status`，只有真正发过 claim 的那个号是 `did_checked_in: true`。
- * 而客户端一台机器只登一个号，所以一台机器上多个 Trae 账号不该共用一个设备号。
- *
- * 所以 `selfDeviceId` 存在该账号的凭据里（`Account.credential`），跟着账号走。
- *
- * **它和 9074 无关**：9074 是上游活动侧的瞬时爆满（见 `usage.ts` 的
- * `TRANSIENT_BIZ_CODES`），换设备号不是解药。
- *
- * **`checkinDeviceId`（aha 真号）仍然优先**：那是客户端真实注册过的号，比自造的更
- * 可能被上游接受。但它只在从 Windows 客户端导入凭据时才有，容器里通常为空。
- */
+/** 账号接口该用哪个设备号：aha 注册号 → 该账号自己的自造号；`machineId`（遥测号）**不参与**，它不是账号接口认的身份。自造号必须**每账号一份**：上游按**设备**记签到，只有真发过 claim 的那个号是 `did_checked_in: true`。
+ * **它和 9074 无关**：9074 是活动侧瞬时爆满（见 `usage.ts` 的 `TRANSIENT_BIZ_CODES`），换设备号不是解药。 */
 export function effectiveDeviceId(credential: any) {
   const real = typeof credential?.checkinDeviceId === 'string' ? credential.checkinDeviceId : '';
   if (real) return real;
@@ -148,11 +101,8 @@ function firstEpoch(...values: any[]) {
 }
 
 /**
- * 从 JWT 的 `exp` 取过期时间。
- *
- * 换令牌/刷新的返回里到底哪个字段是有效期，实测 `TokenExpireAt` 是空的（害得
- * 登录换来的令牌被记成「14 天后过期」的假值）。token 本身就是 JWT，`exp` 是
- * 权威答案，不用猜字段名。
+ * 从 JWT 的 `exp` 取过期时间。换令牌/刷新的返回里 `TokenExpireAt` 实测是空的（害得登录换来的
+ * 令牌被记成「14 天后过期」的假值），而 token 本身就是 JWT，`exp` 是权威答案、不用猜字段名。
  */
 export function jwtExpiry(token: unknown) {
   if (typeof token !== 'string') return 0;
@@ -181,14 +131,9 @@ function toEpoch(value: any) {
   return 0;
 }
 
-// ---------------------------------------------------------------- 设备证明
-
 /**
- * 从凭据里取设备密钥对。
- *
- * 私钥只用于刷新签名，公钥要原样回填到 `DeviceInfo.DevicePublicKey`——服务端存的
- * 就是登录时注册的那一把，换一对必然验签失败。所以密钥必须**跟着凭据走**：
- * 放在一个共用文件里的话，第二个账号登录就会把第一个账号的密钥覆盖掉。
+ * 从凭据里取设备密钥对。私钥只用于刷新签名，公钥要原样回填到 `DeviceInfo.DevicePublicKey`——服务端存的就是
+ * 登录时注册的那把。密钥必须**跟着凭据走**：放共用文件里，第二个账号登录就会把第一个的覆盖掉。
  */
 function deviceKeyOf(credential: any): { privateKeyPEM: string; publicKeyPEM: string } {
   const privateKeyPEM = typeof credential?.privateKeyPEM === 'string' ? credential.privateKeyPEM : '';
@@ -200,26 +145,8 @@ function deviceKeyOf(credential: any): { privateKeyPEM: string; publicKeyPEM: st
   return { privateKeyPEM, publicKeyPEM };
 }
 
-/**
- * 刷新要带的设备证明。
- *
- * 逆向自客户端 `exchangeTokenByRefreshToken` / `ZLe()`：签名内容是 6 行、用 `\n`
- * 连接 ——
- *
- *   POST\n/cloudide/api/v3/trae/oauth/ExchangeToken\n<ClientID>\n<RefreshToken>\n<秒级时间戳>\n<nonce>
- *
- * 第 2 行是**刷新**那个端点（`api.trae.cn/cloudide/api/v3/...`），和 `login.ts`
- * 换 AuthCode 用的 `/trae/api/v3/oauth/ExchangeToken` 不是一个路径，别照抄那边。
- *
- * nonce 是 16 字节随机数的 hex，签名是 SHA-256 的 ECDSA（EC P-256 私钥），base64。
- * 少了这段 `DeviceProof`，刷新接口只会回一个笼统的失败——这就是「令牌一过期就
- * 再也救不回来」的真正原因，而不是 RefreshToken 本身失效。
- *
- * **换令牌（AuthCode → Token）也要这一段**。2026-11-09 在容器里登录时实测：
- * 不带签名直接 401 `{"Code":"20405","Message":"Device proof required."}`。
- * 同一个端点、同一种签名形状，只是第 4 行换成 AuthCode——所以这里把参数叫 `token`，
- * 两种调用共用，签名格式只有一份。
- */
+/** 刷新要带的设备证明。签名内容是 6 行、`\n` 连接：`POST\n<刷新端点>\n<ClientID>\n<RefreshToken>\n<秒级时间戳>\n<nonce>`。
+ * 第 2 行是**刷新**端点，和 `login.ts` 换 AuthCode 用的路径不是同一个。少了这段 `DeviceProof`，刷新接口只回一个笼统的失败——这才是「令牌一过期就再也救不回来」的真正原因。换令牌也要这一段，只是第 4 行换成 AuthCode。 */
 export function deviceProof(token: string, key: { privateKeyPEM: string }) {
   const timestamp = Math.floor(Date.now() / 1000);
   const nonce = crypto.randomBytes(16).toString('hex');
@@ -246,13 +173,7 @@ function deviceInfo(credential: any, key: { publicKeyPEM: string }) {
   };
 }
 
-// ---------------------------------------------------------------- 刷新
-
-/**
- * 用 refreshToken 换一对新令牌。
- *
- * 返回值交给 `usableCredential()` 写回账号文件——这里**不碰磁盘**。
- */
+/** 用 refreshToken 换一对新令牌。返回值交给 `usableCredential()` 写回账号文件——这里**不碰磁盘**。 */
 export async function refreshTraeCredential(credential: TraeCredential): Promise<TraeCredential> {
   if (!credential.refreshToken) throw credentialExpired('没有可用的 Trae refreshToken，请重新登录');
   const key = deviceKeyOf(credential);
@@ -289,8 +210,7 @@ export async function refreshTraeCredential(credential: TraeCredential): Promise
   }
   if (!response.ok) {
     const detail = `Trae token refresh failed (http ${response.status}): ${text.slice(0, 200)}`;
-    // 4xx：refreshToken 被拒（过期/已用/设备证明不对），重试没有意义。
-    // 5xx：上游在抖，下次可能就好，别把账号封成 invalid。
+    // 4xx：refreshToken 被拒（过期/已用/设备证明不对），重试无意义；5xx：上游在抖，别把账号封成 invalid。
     throw response.status >= 400 && response.status < 500 ? credentialExpired(detail) : credentialUnavailable(detail);
   }
   const result = doc && doc.Result ? doc.Result : doc;
@@ -311,9 +231,7 @@ export async function refreshTraeCredential(credential: TraeCredential): Promise
 
 /**
  * Trae 后端认的请求头，照客户端自己发的那一套填。
- *
- * `x-device-id` 是 `sha256(machineId)` 的前 32 位（见 `private/docs/trae-recon.md` §3）；
- * `machineId` 为空时这个头就整个不发。
+ * `x-device-id` 是 `sha256(machineId)` 的前 32 位；`machineId` 为空时这个头整个不发。
  */
 export function traeHeaders(credential: any) {
   const machineId = credential.machineId || '';

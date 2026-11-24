@@ -1,8 +1,4 @@
-// 控制台 + 滚动文件日志。
-//
-// 所有模块都走这一个 `log`，通道内部的决策（凭据缓存、签到结果）才能和它们
-// 所属的请求行按时间顺序落在 data/logs 里。通道通过各自的 `set*Logger` 钩子拿到它；
-// 直接 import 本模块的只有账本和服务端。
+// 控制台 + 滚动文件日志。所有模块都走这一个 `log`，通道内部的决策才能和所属请求行按时间顺序落在 data/logs 里。
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,13 +14,7 @@ export function configureLogger(options: { verbose?: boolean } = {}) {
   if (typeof options.verbose === 'boolean') verbose = options.verbose;
 }
 
-/**
- * 删掉超过保留期的按天日志。
- *
- * 只碰 `gateway-YYYY-MM-DD.log` 这个模式：`logs/` 里还有其它来源的文件
- * （`plugin-host.log` 由插件写、`gateway.out.log` 可能是启动脚本重定向的），
- * 那些不归这里管，误删会让人查不到问题。
- */
+/** 删掉超过保留期的按天日志。只碰 `gateway-YYYY-MM-DD.log` 这个模式：`logs/` 里还有插件写的 `plugin-host.log`、启动脚本重定向的 `gateway.out.log`，误删会让人查不到问题。 */
 function pruneOldLogs() {
   const cutoff = Date.now() - RETENTION_DAYS * 24 * 3600 * 1000;
   let names;
@@ -55,14 +45,9 @@ export function log(...args: unknown[]) {
   if (verbose) console.log(line);
   try {
     fs.mkdirSync(LOG_DIR, { recursive: true });
-    // **文件名用本地日期，不用 UTC**。
-    //
-    // 早先这里写的是 `toISOString().slice(0, 10)`——那是 UTC 日期。容器里
-    // `TZ=Asia/Shanghai`，于是早上 8 点之前的日志全被写进「昨天」那个文件，
-    // 而日志行里的时间戳是本地可读的 ISO：查「今早出的问题」时按日期找文件会找错，
-    // 打开后时间戳又对不上，很像文件写串了。
-    //
-    // 日志行本身保留 ISO（带 Z）不变：那是给机器解析的，改动它没好处。
+    // **文件名用本地日期，不用 UTC**。早先写的是 `toISOString().slice(0, 10)`——那是 UTC 日期，容器
+    // `TZ=Asia/Shanghai` 时早上 8 点前的日志全被写进「昨天」那个文件，而日志行的时间戳是本地 ISO：
+    // 按日期找文件会找错、打开后时间戳又对不上。日志行本身保留 ISO（带 Z）不变，那是给机器解析的。
     const day = localDate();
     fs.appendFileSync(path.join(LOG_DIR, `gateway-${day}.log`), line + '\n');
   } catch {

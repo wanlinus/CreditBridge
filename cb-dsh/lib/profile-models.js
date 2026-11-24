@@ -1,30 +1,17 @@
 // 把网关的模型列表写进 DSH profile 的 `models:` 段。
 //
-// 为什么在插件里做：profile 在**笔记本本机**，网关在 `192.168.1.100` 的容器里，它看到的
-// `~/.dsh/profiles/...` 是 `/home/node/...`，根本不存在。插件 host 半边就跑在 DSH
-// 进程里，和 profile 同一台机器。
-//
-// 逻辑是从 `cb-gateway/tools/sync-profile-models.mjs` 搬过来的，行为保持一致：
-//   - 只写网关知道的东西，**其余字段原样逐行保留**（`input` / `reasoningEfforts`
-//     由这里重新生成，所以连它们的子行一起跳过，否则会重复输出非法 YAML）
-//   - 按 id 合并，不是整段重写
-//   - 改前备份，只碰 `models:` 段，不做 YAML 往返序列化（profile 是手写的，任何
-//     序列化都会把引号、键顺序、注释重排）
-//
-// 搬过来的原因：那个脚本得在笔记本上手跑。现在「网关 /models 页勾选 → 插件自动同步」
-// 才是主流程，脚本保留给「不想开 DSH、只想一次性写盘」的场合。
+// 在插件里做是因为 profile 在笔记本本机、网关在容器里（它看到的 `~/.dsh` 是 `/home/node`）。
+// 按 id 合并而不是整段重写；只碰 `models:` 段，不做 YAML 往返序列化（profile 是手写的）。
 
 import fs from 'node:fs';
 
 import { blockEnd, indentOf, isBlank, providerAbove } from './yaml-lines.js';
 
 /**
- * 把 `models:` 段里一个条目的字段解析出来。
+ * 解析 `models:` 段里一个条目的字段。
  *
- * `input:` / `reasoningEfforts:` 由这里重新生成，所以**连同子行一起跳过**——只跳父行
- * 的话，`- text`、`low: low` 会被当成「要保留的字段」再输出一遍，直接产出非法 YAML。
- *
- * `contextWindow` 也跳过：网关现在是唯一事实源，插件不再保留「用户手调过的值」。
+ * `input:` / `reasoningEfforts:` 由这里重新生成，所以**连同子行一起跳过**——只跳父行的话
+ * `- text`、`low: low` 会被当成要保留的字段再输出一遍，直接产出非法 YAML。
  */
 function parseEntries(lines, start, end, itemIndent) {
   const entries = [];

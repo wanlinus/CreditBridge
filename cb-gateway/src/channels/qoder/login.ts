@@ -1,26 +1,6 @@
-// Qoder 设备码登录流（自实现）。
-//
-// 这是「容器里登 Qoder」的核心：不再依赖 Windows 客户端的 OSCrypt/DPAPI 解 `dt-`，
-// 而是照着 Linux CN CLI（`.19` 版）自己的 `startDeviceFlow` 复刻一遍——
-// PKCE + nonce + machine_id 拼授权 URL，浏览器授权后轮询 poll 拿 `dt-`/`drt-`。
-//
-// 协议还原自 `qoder-worker-runtime.obf.mjs` 的 `startDeviceFlow`（函数名 `Jfl`），
-// 完整证据链见 `private/docs/qoder-linux-recon.md`。要点：
-//
-//   授权 URL  https://qoder.cn/device/selectAccounts?challenge=&challenge_method=S256&nonce=&machine_id=&client_id=
-//   轮询      https://openapi.qoder.com.cn/api/v1/deviceToken/poll?nonce=&verifier=&challenge_method=S256
-//
-// 轮询每 1 秒一次、总超时 5 分钟；404 表示「还没授权」，继续等；200 且带 token 即成功。
-//
-// **拿到的 `dt-` / `drt-` 一次授权解决全部需求**：
-//
-//   额度、签到  →  `dt-` 直接打 `/sash/*`
-//   对话        →  用 `dt-` 现算 COSY 签名输入（见 `cosy/deriveRuntimeFields`）
-//
-// 早期结论说「两者不能互转，`dt-` 喂 CLI 会被 `access_token_invalid` 拒」，所以还要
-// 额外跑一次 `qoderclicn login` 拿 `.auth/user`。2026-11-22 证实那条只适用于
-// **CLI 的 accessToken 模式**；走 COSY 签名完全是另一条路，`dt-` 现算就够。
-// CLI 因此彻底从项目里移除——这个文件现在是唯一还在跟上游打登录协议的地方。
+// Qoder 设备码登录流（自实现）：PKCE + nonce + machine_id 拼授权 URL，浏览器授权后轮询拿 `dt-`/`drt-`。
+// 反直觉：拿到的 `dt-` 一次授权解决全部需求——`/sash/*` 直接打，对话则用它现算 COSY 签名输入；
+// 「`dt-` 喂 CLI 被 `access_token_invalid` 拒」只适用于 CLI 的 accessToken 模式，与签名无关。
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -38,15 +18,11 @@ const OPENAPI_BASE = 'https://openapi.qoder.com.cn';
 const AUTH_PATH = '/device/selectAccounts';
 const POLL_PATH = '/api/v1/deviceToken/poll';
 
-// CN 版的 client_id。`.19` 版把这个值用 XOR 混淆（密钥 "LLiTy0jxmshR"）藏进
-// `Ofl`，解出来和 `.18` 版 recon 实测的 `e883ade2-...` 完全一致——两版沿用同一个值。
+// CN 版的 client_id。`.19` 版把它用 XOR 混淆藏在 `Ofl`，解出来和 `.18` 版 recon 的值一致。
 const CLIENT_ID = 'e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb';
 
-// 官方 CLI 的请求头带 `User-Agent: qoder/<version>`。
-//
-// **这是唯一的版本号来源**：`/health` 回给界面的 `clientVersion`、请求头里的
-// `cosy-version`（在 `cosy/index.ts` 的 `COSY_VERSION`）、模型列表的
-// `minimal_version.cli` 门禁，全部要跟它一致。改版本时先改这里。
+// 官方 CLI 的 `User-Agent: qoder/<version>`。**这是唯一的版本号来源**：`/health` 的
+// `clientVersion`、请求头的 `cosy-version`、模型列表的 `minimal_version.cli` 门禁都要跟它一致。
 export const QODER_CLI_VERSION = '1.1.79-hotfix.19';
 
 const USER_AGENT = `qoder/${QODER_CLI_VERSION}`;
@@ -55,18 +31,8 @@ const USER_AGENT = `qoder/${QODER_CLI_VERSION}`;
 const POLL_INTERVAL_MS = 1000;
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
 
-/**
- * machine_id 的落点。和 Trae 的 `trae-identity.json` 同理：设备号必须跨登录稳定，
- * 否则服务端会当成「新设备」。
- *
- * CLI 原版的 machine_id 是从硬件（IOPlatformUUID / /etc/machine-id / hostid）派生、
- * 再 sha256 成 64 位 hex 的；拿不到硬件就随机生成。这里不碰硬件——网关跑在容器里，
- * 读 /etc/machine-id 不稳定（镜像重建会变），所以直接自造一个 UUID 落盘复用。
- *
- * **为什么 UUID 就够**：设备号在授权 URL 里只是标识，不参与任何签名验签（对比
- * Trae 的 DeviceID 会影响换令牌验签）。poll 阶段甚至不带 machine_id。所以「任意
- * 稳定字符串」即可，重点是稳定，不是和硬件绑定。
- */
+/** machine_id 的落点。设备号必须跨登录稳定，否则服务端会当成「新设备」。这里不碰硬件—— 容器里读 `/etc/machine-id` 不稳定（镜像重建会变），所以自造 UUID 落盘复用。
+ * **UUID 就够**：设备号在授权 URL 里只是标识、不参与验签（对比 Trae 的 DeviceID 会影响验签）， poll 阶段甚至不带它。 */
 const IDENTITY_PATH = path.join(STATE_DIR, 'qoder-identity.json');
 
 export function loadOrCreateMachineId(): string {
@@ -85,30 +51,13 @@ export function loadOrCreateMachineId(): string {
   return machineId;
 }
 
-/**
- * UMID 设备指纹 token。
- *
- * ## 现在固定返回空串
- *
- * 它原本来自阿里 UMID 组件（内嵌原生 ELF 采样硬件后落盘 `umid-cache.json`），
- * 只有跑过 CLI 才有缓存。CLI 移除后没有来源了。
- *
- * **不传是官方支持的降级路径**：`startDeviceFlow` 里 `machine_token` 为空时
- * 就不设这个参数，登录照常成功——实测（2026-11-22）设备流登录完全不需要它。
- *
- * 保留这个函数而不是删掉，是因为 `buildAuthorizeUrl` 的签名里有这个可选参数，
- * 将来如果真要接 UMID，从这里返回即可。**不要**再去读 CLI 的缓存文件。
- */
+/** UMID 设备指纹 token，现在固定返回空串：来源是阿里 UMID 组件（要跑过 CLI 才有缓存）， CLI 移除后没了。**不传是官方支持的降级路径**（`startDeviceFlow` 里为空就不设该参数，实测设备流登录完全不需要它）。
+ * 保留函数只为 `buildAuthorizeUrl` 的可选参数； **不要**再去读 CLI 的缓存文件。 */
 export function loadUmidMachineToken(): string {
   return '';
 }
 
-// ---------------------------------------------------------------- PKCE
-
-/**
- * 生成 PKCE 对。verifier 用 base64url（无填充），challenge = sha256(verifier) 再
- * base64url。和 CLI 的 `Gfl()` 一致：challenge 是把 `+`→`-`、`/`→`_`、去 `=`。
- */
+/** 生成 PKCE 对：verifier 用 base64url（无填充），challenge = sha256(verifier) 再 base64url。 */
 export function pkceChallenge(): { verifier: string; challenge: string } {
   const verifier = crypto.randomBytes(48).toString('base64url');
   const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
@@ -141,8 +90,6 @@ export function buildPollUrl(input: { nonce: string; verifier: string }): string
   return `${OPENAPI_BASE}${POLL_PATH}?${params.toString()}`;
 }
 
-// ---------------------------------------------------------------- 设备流
-
 export interface DeviceFlowResult {
   /** `dt-` 会话令牌，只给 `/sash/*` 用。 */
   token: string;
@@ -158,15 +105,8 @@ export interface DeviceFlowResult {
   username: string;
 }
 
-/**
- * 从 poll 的成功响应里归一化出设备流结果。
- *
- * **poll 和 refresh 两个接口的字段名不一样**（逆向确认）：
- *   - poll 返回 `token`（短字段）+ `refresh_token` + `expires_at`
- *   - refresh 返回 `device_token`（长字段）+ `refresh_token` + `expires_at`
- * 所以这里优先认 `token`，回退 `device_token`，两个都认。`expires_at` 之外也认
- * `expires_in`（秒数，CLI 的 `buildUserInfoFromDeviceToken` 两种都处理）。
- */
+/** 从 poll 的成功响应里归一化出设备流结果。**poll 和 refresh 两个接口字段名不一样**： poll 返回 `token`（短字段）、refresh 返回 `device_token`（长字段），所以两个都认；
+ * `expires_at` 之外也认 `expires_in`（秒数）。 */
 export function parsePollResponse(doc: any): DeviceFlowResult | null {
   if (!doc || typeof doc !== 'object') return null;
   const token = typeof doc.token === 'string' ? doc.token : typeof doc.device_token === 'string' ? doc.device_token : '';
@@ -194,14 +134,8 @@ function toIso(isoValue: unknown, secondsValue: unknown): string {
   return '';
 }
 
-/**
- * 跑一次设备流登录，成功后返回 `dt-`/`drt-`。
- *
- * 流程：生成 PKCE + nonce + 复用 machine_id → `onUrl(authUrl)` 交给前端 → 轮询 poll
- * 直到成功或超时/取消。`signal` 取消时立刻抛「已取消」，不空转到 5 分钟。
- *
- * **不落盘、不开浏览器**：凭据交给账号层，开浏览器是调用方（面板）的事。
- */
+/** 跑一次设备流登录，成功后返回 `dt-`/`drt-`：生成 PKCE + nonce + 复用 machine_id → `onUrl(authUrl)` 交给前端 → 轮询 poll 直到成功/超时/取消。
+ * **不落盘、不开浏览器**：凭据交给账号层，开浏览器是调用方（面板）的事。 */
 export async function runDeviceFlow(
   options: { onUrl?: (url: string) => void; signal?: AbortSignal } = {},
 ): Promise<DeviceFlowResult> {
@@ -217,7 +151,6 @@ export async function runDeviceFlow(
 
   const deadline = Date.now() + LOGIN_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    // 取消信号优先检查：用户再点一次登录会 abort 掉上一次。
     if (options.signal?.aborted) throw new Error('登录已取消');
 
     let response: Response;
@@ -228,14 +161,12 @@ export async function runDeviceFlow(
         signal: options.signal,
       });
     } catch (error: any) {
-      // abort 导致的 fetch 失败要转成「已取消」，而不是「网络错误」。
       if (options.signal?.aborted) throw new Error('登录已取消');
       throw new Error(`轮询设备流失败：${error?.message || error}`);
     }
 
     if (response.status === 404) {
-      // 还没授权，睡 1 秒继续。用普通 sleep，别 sleep 到 signal 上再抛错——
-      // 这里直接抛取消错误即可。
+      // 404 = 还没授权，睡 1 秒继续（取消在下一轮循环开头检查）。
       await sleep(POLL_INTERVAL_MS, options.signal);
       continue;
     }
@@ -252,7 +183,6 @@ export async function runDeviceFlow(
     }
     const result = parsePollResponse(doc);
     if (result) return result;
-    // 200 但没有 token：异常形态，报出来而不是无限重试。
     throw new Error(`设备流轮询 200 但没拿到 token：${text.slice(0, 200)}`);
   }
 
@@ -277,19 +207,8 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
-// ---------------------------------------------------------------- 用户信息
-
-/**
- * 用 `dt-` 拿上游用户信息（昵称 / 邮箱）。
- *
- * 设备流 poll 只给 `user_id`，**不给昵称**（实测 `user_name` 是空的）。所以登录
- * 成功后补一发 `GET /api/v1/userinfo` 拿 `name`，账号的 label 才不会是「账号1」。
- * 接口来自 CLI 的 `fetchOpenApiUserInfo`（`auth.getUserInfo`），字段名用 `db()` 的
- * 候选键：uid = id/user_id/uid，name = name/username/user_name。
- *
- * **失败不抛错**：昵称只是展示用，拿不到就让账号层退回「账号N」，不值得为它把
- * 一次成功的登录搞失败。
- */
+/** 用 `dt-` 拿上游用户信息（昵称 / 邮箱）。设备流 poll 只给 `user_id`、**不给昵称**，所以登录成功后补一发 `GET /api/v1/userinfo` 拿 `name`，账号 label 才不会是「账号1」。
+ * **失败不抛错**：昵称只用于展示，不值得为它把一次成功的登录搞失败。 */
 export async function fetchUserInfo(token: string): Promise<{ userId: string; username: string } | null> {
   try {
     const response = await fetch(`${OPENAPI_BASE}/api/v1/userinfo`, {
@@ -312,20 +231,13 @@ export async function fetchUserInfo(token: string): Promise<{ userId: string; us
       username: pick('name', 'username', 'user_name'),
     };
   } catch {
-    // 网络/超时都忽略，昵称不是关键数据。
     return null;
   }
 }
 
-// ---------------------------------------------------------------- 登录入口
-
 /**
- * 设备流登录：不碰 Windows 客户端，照着 Linux CLI 的 `startDeviceFlow` 自实现
- * PKCE + nonce + 轮询，直接拿 `dt-`/`drt-`。
- *
- * **这是「容器里登 Qoder」的路径**：全程纯网络，不依赖 DPAPI / APPDATA。
+ * 设备流登录入口：全程纯网络，不依赖 DPAPI / APPDATA（这是「容器里登 Qoder」的路径）。
  * 一次授权就够：`dt-` 既能打 `/sash/*`（额度 + 签到），也能现算 COSY 签名（对话）。
- *
  * @param options.onUrl 拿到授权 URL 时回调一次，让前端展示/打开浏览器。
  * @param options.signal 取消信号，用户再点一次登录时掐掉上一次。
  */
@@ -338,11 +250,8 @@ export async function deviceFlowLogin(
   const userId = userInfo?.userId || flow.userId;
   const username = userInfo?.username || flow.username;
 
-  // 现算 COSY 签名要用的 userInfo。
-  //
-  // **这一步取代了「让 CLI 登录一次」**：`encrypt_user_info` 和 `key` 不是服务端
-  // 下发的，是本机 wasm 用 dt- 算出来的（见 `cosy/deriveRuntimeFields`）。
-  // 算失败不拦登录——额度和签到还能用，只是对话会报错，比整条登录失败好。
+  // 现算 COSY 签名要用的 userInfo（取代了「让 CLI 登录一次」）。算失败不拦登录——
+  // 额度和签到还能用，只是对话会报错，比整条登录失败好。
   let signatureUserInfo: QoderCredential['userInfo'];
   if (userId) {
     try {
@@ -361,7 +270,6 @@ export async function deviceFlowLogin(
     username,
     ...(signatureUserInfo ? { userInfo: signatureUserInfo } : {}),
     dataPolicyAgreed: true,
-    // 标记来源为设备流登录（区别于 refresh）。
     source: 'device-flow',
     savedAt: Date.now(),
   };

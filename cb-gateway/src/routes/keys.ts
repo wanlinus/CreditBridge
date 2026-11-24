@@ -1,10 +1,5 @@
-// API key 的管理面：`/api/keys/*`（JSON）。
-//
-// **没有页面层了**（2026-11-13 SPA 转正）：旧版有一套 `GET /keys` + 五个表单动作，
-// 明文靠一次性的内存槽 `pendingSecrets` 经 303 传到列表页（因为明文不能进 URL）。
-// 现在 `POST /api/keys` 直接把明文回在响应体里，由前端在页面上展示——那层内存中转
-// 连同它的 5 分钟过期逻辑一起删掉了。
-//
+// API key 的管理面：`/api/keys/*`（JSON）。**没有页面层了**（2026-11-13 SPA 转正）：旧版那套一次性内存槽
+// `pendingSecrets` 经 303 传明文的做法连同 5 分钟过期逻辑一起删了，现在明文直接回在响应体里。
 // 认证：整个模块都在 `auth/middleware.ts` 的闸后面（Bearer 或会话 Cookie）。
 
 import { Hono } from 'hono';

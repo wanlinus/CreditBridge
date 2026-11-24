@@ -1,16 +1,6 @@
-// 网关自有端点。
-//
-// **全部在 `/api/*` 下**：`/v1/*` 是 OpenAI 兼容入口（只放 `/models` 和
-// `/chat/completions`），网关自己的东西不该混进去。
-//
-// 2026-11-22 曾按主题拆成 4 个文件，随后又合回来：拆完之后 `usage.ts` 只有 35 行代码、
-// `admin.ts` 只剩 11 行（纯组合器），读一个端点要先判断它在哪个文件里。**文件长是因为
-// 注释，不是因为逻辑复杂**——该精简的是注释，不是拆文件。
-//
-// `events.ts` 仍单独一个文件：SSE 那段是整个 admin 里逻辑最重的一块（流生命周期、
-// keepalive、断线清理），和「读一个数字回一个 JSON」的端点混在一起会互相淹没。
-//
-// 13 条全是精确路径，注册顺序不影响匹配。
+// 网关自有端点。**全部在 `/api/*` 下**：`/v1/*` 是 OpenAI 兼容入口，网关自己的东西不该混进去。
+// 2026-11-22 曾按主题拆成 4 个文件又合回来（拆完 `usage.ts` 只剩 35 行代码、`admin.ts` 只剩 11 行组合器）；
+// `events.ts` 仍单独一个文件，因为 SSE 那段是整个 admin 里逻辑最重的一块。
 
 import { Hono } from 'hono';
 
@@ -51,20 +41,8 @@ adminRoutes.route('/', eventsRoutes);
 
 // ---------------------------------------------------------------- 网关自述与生命周期
 
-/**
- * 健康快照。
- *
- * **在 `/api/` 下，不在根**：它要认证（authGate 对所有非公开路径生效），所以它不是
- * 「无认证探针」——容器 healthcheck 探的是 `/login`。放在 `/api/` 等于把「网关自述的
- * 状态」和其他管理信息摆在一起，路径本身就说明了它需要 key。
- *
- * **只报本地状态，不发网络请求**：这个接口会被面板和插件反复轮询，每次去打上游
- * 等于把上游的限流额度花在读健康上。真要验活用 `POST /api/accounts/<id>/verify`。
- *
- * 字段分两段：
- *   `accounts`  账号数组（模型 id 的前半段就是它，`ready` 与否在这）
- *   `channels`  通道元数据（`idPrefix` / `identity` / `multiAccount` / 模型总闸）
- */
+// 健康快照。**在 `/api/` 下、要认证**，不是无认证探针（容器 healthcheck 探的是 `/login`）。
+// **只报本地状态、不发网络请求**：它被反复轮询，每次打上游等于把限流额度花在读健康上；验活用 `POST /api/accounts/<id>/verify`。
 adminRoutes.get('/api/health', (c) => {
   const accounts = channels.flatMap((channel) =>
     accountsOf(channel.id).map((account) => ({
@@ -85,11 +63,9 @@ adminRoutes.get('/api/health', (c) => {
 
   const info: Record<string, any> = {};
   for (const channel of channels) {
-    // `identity` 一起回，是为了排查「上游说客户端太旧」这类问题——版本号是按通道
-    // 声明的，不看这里就只能进容器翻源码才知道实际发了什么。
-    //
-    // `listed` 是模型列表总闸。同步模型清单的人必须能区分「这个通道关掉了」和
-    // 「这个账号没登录、翻出 0 个模型」：前者要写空的 `models:` 段，后者必须跳过。
+    // `identity` 一起回，是为了排查「上游说客户端太旧」——版本号按通道声明，不看这里只能进容器翻源码。
+    // `listed` 是模型列表总闸：同步模型清单的人必须能区分「这个通道关掉了」（要写空 `models:` 段）
+    // 和「这个账号没登录、翻出 0 个模型」（必须跳过）。
     info[channel.id] = {
       id: channel.id,
       label: channel.label,
@@ -109,14 +85,9 @@ adminRoutes.get('/api/health', (c) => {
     gateway: 'up',
     version: PACKAGE_VERSION,
     startedAt: STARTED_AT_ISO,
-    // 每天签到的时间点（`HH:MM`，容器时区）。设置页要读它，而它本来就是「网关自述
-    // 状态」的一部分；放在这里而不是新开 `/api/settings`，是为了不把某个页面的字段
-    // 需求固化进契约。零成本本地读，不违反上面那条「不发网络请求」。
+    // 每天签到的时间点（`HH:MM`，容器时区）。放这里而不是新开 `/api/settings`：零成本本地读，不违反上面那条。
     checkinTime: config.checkinTime,
-    // API key 校验快照的 TTL。设置页要展示/修改它，所以一并自述。
-    //
-    // 为什么在 `/health` 而不是新开端点：和 `checkinTime` 同理——都是「网关运行时
-    // 的一个可调参数」，零成本本地读，不违反「不发网络请求」那条。
+    // API key 校验快照的 TTL。同理：都是「网关运行时的可调参数」，零成本本地读。
     keysSnapshotTtlMs: keySnapshotTtl(),
     // 模型 id 的形状写在这里：插件/脚本要拼模型列表时读它，别自己硬编码格式。
     modelIdFormat: '<idPrefix>-<seq>/<model>',
@@ -125,18 +96,7 @@ adminRoutes.get('/api/health', (c) => {
   });
 });
 
-/**
- * 通道的**外观**清单：名字 + 图标。给插件画徽标用。
- *
- * 和 `/api/health` 的分工：`/health` 回答「网关和账号还活着吗」（每次都要最新的），
- * 这个只回答「每个通道长什么样」（基本不变）。分开的理由是缓存策略完全相反——
- * 这个可以缓存 5 分钟，`/health` 一秒都不能缓存。
- *
- * 图标是 data URI，原因见 `core/channel-icons.ts`（插件在 `dsh-app://` 下，
- * 直连取图要赌一个没验证过的 CSP 配置）。
- *
- * `letter` 是图标缺失时的兜底：**由网关给**，前端就不用再猜「取哪个字段的第一个字」。
- */
+/** 通道的**外观**清单：名字 + 图标。和 `/health` 分开是因为缓存策略完全相反——这个能缓存 5 分钟，`/health` 一秒都不能。`letter` 是图标缺失时的兜底，由网关给，前端不用猜「取哪个字段的第一个字」。 */
 adminRoutes.get('/api/channels', (c) => {
   c.header('Cache-Control', 'private, max-age=300');
   return c.json({
@@ -157,40 +117,17 @@ adminRoutes.post('/api/shutdown', (c) => {
 
 // ---------------------------------------------------------------- 模型目录 / 设置 / 可见性
 
-/**
- * 模型列表的语义化路径，和 `/v1/models` **逐字节相同**。
- *
- * 给「设置页探测模型」「脚本要一份清单」用：`/v1/*` 是 OpenAI 协议的地盘，探测这种
- * 网关自己的事写在 `/api/*` 下更清楚。两者共用 `modelListPayload()`，所以不会出现
- * 「探测到 17 个、实际能选 16 个」。
- */
+/** 模型列表的语义化路径，和 `/v1/models` **逐字节相同**（共用 `modelListPayload()`），否则会出现「探测到 17 个、实际能选 16 个」。 */
 adminRoutes.get('/api/models', async (c) => {
   return c.json(await modelListPayload());
 });
 
-/**
- * 上游模型**目录**（不是可见性、不是 `/v1/models`）。
- *
- * 这是 v2 里唯一「完全没有 JSON 出口」的一块：`channel.modelsOf(account)` 的结果只出现在
- * `/models` 和 `/accounts/:id/models` 两个 SSR 页面里。前端 SPA 化之后必须有个端点，
- * 否则那边要把「怎么取目录」重新实现一遍。
- *
- * 两种问法，返回的东西**不一样**，别互换：
- *
- *   - 不带参数（通道级）：每个通道取**第一个 `ready` 账号**的目录。这是 `/models` 页的
- *     口径——同一通道的目录通常一致，取谁都行。
- *   - `?account=<id>`（账号级）：取**那个账号自己**的全量目录。这是
- *     `/accounts/:id/models` 页的口径，用途是核对「这个号实际有什么」。
- *
- * 多账号时两者可能不同（不同号的会员等级、灰度批次会不一样）。**拿通道级结果去渲染
- * 账号级页面，会把「这个号有什么」显示成「它兄弟号有什么」**——而那一页存在的意义
- * 恰恰是核对上游。
- *
- * **不加服务端缓存**：上游目录本来就有通道级缓存（如 WorkBuddy 的 catalog），再加一层
- * 会让「点刷新没变化」。前端用显式 refresh 即可。
- *
- * 失败的通道**不整体报错**，而是该块带 `error` 降级——一个通道挂了不该让整页空白。
- */
+// 上游模型**目录**（不是可见性、不是 `/v1/models`）。两种问法返回的东西**不一样，别互换**：
+//   不带参数（通道级）取**第一个 `ready` 账号**的目录，这是 `/models` 页的口径；
+//   `?account=<id>`（账号级）取**那个账号自己**的全量目录，用途是核对「这个号实际有什么」。
+// 多账号时两者可能不同（会员等级、灰度批次）。**拿通道级结果渲染账号级页面**会把「这个号有什么」
+// 显示成「它兄弟号有什么」，而那一页存在的意义恰恰是核对上游。
+// **不加服务端缓存**：上游目录本来就有通道级缓存，再加一层会让「点刷新没变化」。失败的通道不整体报错，该块带 `error` 降级。
 adminRoutes.get('/api/models/catalog', async (c) => {
   const accountId = new URL(c.req.url).searchParams.get('account');
 
@@ -222,9 +159,8 @@ adminRoutes.get('/api/models/catalog', async (c) => {
   const settings = allSettings();
   const groups = [];
   for (const channel of channels) {
-    // 「优先 ready，没有就第一个，一个都没有就 null」——和 `POST /api/models/settings`
-    // 的档位校验共用一份实现（`primaryAccountOf`）。两处各写一遍的话，改了一处忘了
-    // 另一处，表现是「目录页能列出模型、设置页存不进去」这种只有一半功能坏掉的状态。
+    // 「优先 ready，没有就第一个，一个都没有就 null」——和 `POST /api/models/settings` 的档位校验共用
+    // `primaryAccountOf`。两处各写一遍的表现是「目录页能列出模型、设置页存不进去」这种只有一半坏掉的状态。
     const source = primaryAccountOf(channel.id);
     let models: any[] = [];
     let error: string | null = null;
@@ -236,9 +172,7 @@ adminRoutes.get('/api/models/catalog', async (c) => {
       }
     }
 
-    // 上下文窗口的**可选档位**只有实现了 `catalogOf` 的通道有（WorkBuddy / Trae）：
-    // 那是上游客户端自己那个选择器的数据，即 provider 真正接受的尺寸。拿不到就让
-    // 用户自由填，不硬编一套「0.5x / 0.75x / 1x」——那会把别的通道的上限算错。
+    // 上下文窗口的**可选档位**只有实现了 `catalogOf` 的通道有：那是上游客户端选择器的数据，即 provider 真正接受的尺寸。
     const lengths: Record<string, any> = {};
     if (source && typeof channel.catalogOf === 'function') {
       try {
@@ -260,9 +194,8 @@ adminRoutes.get('/api/models/catalog', async (c) => {
         const setting = settings[settingKey(channel.idPrefix, model.id)] ?? {};
         const declared = lengthsOf(model.id);
         const effectiveContextWindow = maxContextOf(declared, model.context_length);
-        // **上下文窗口永远是下拉**：上游给了档位就用它的（provider 真正接受的那些尺寸），
-        // 没给就按上限推三档（`contextOptions`）。不改成自由填数字——那会让「这个值到底
-        // 是不是上游认的」变成一个没人能回答的问题。
+        // **上下文窗口永远是下拉**：上游给了档位就用它的，没给就按上限推三档。不改成自由填数字——
+        // 那会让「这个值到底是不是上游认的」变成一个没人能回答的问题。
         const lengths =
           declared && Array.isArray(declared.options) && declared.options.length > 0
             ? declared
@@ -273,8 +206,7 @@ adminRoutes.get('/api/models/catalog', async (c) => {
           efforts: effortsOf(model),
           // 当前生效的缺省思考档；没配过就是档位表里最高那一档。
           effectiveEffort: effectiveEffort(channel.idPrefix, model),
-          // 当前生效的缺省上下文窗口 = **这个模型允许的最大尺寸**。
-          // 不是 `lengths.default`：那是上游客户端选择器的默认档，可能小于上限。
+          // 当前生效的缺省上下文窗口 = **这个模型允许的最大尺寸**，不是 `lengths.default`（那是选择器默认档，可能小于上限）。
           effectiveContextWindow,
           // 用户在网关配过的值（null = 跟随默认）
           setting: {
@@ -294,25 +226,10 @@ adminRoutes.get('/api/models/catalog', async (c) => {
   return c.json({ channels: groups });
 });
 
-/**
- * 写一个模型的设置。
- *
- * ## 为什么设置只存在网关这一份
- *
- * 「上下文窗口」和「思考强度」以前是**两头各存一份**：网关 `/api/model-config` 读写
- * 网关宿主机上的 DSH profile（容器部署下那个路径根本不存在，等于死代码），插件另开
- * 一条 7802 通道读写笔记本上的 profile。两个写入口 + 一个只在实验室里成立的假设。
- *
- * 现在只有网关这一份：`model_setting` 表（v4 起进库，之前是 `config.json` 的
- * `modelSettings` 键）。插件退化成「照抄 `/api/models`」，⚙ 下拉和它的两条
- * `/model-config` 一起删掉。
- *
- * 形状：`{ prefix, modelId, contextWindow?, maxOutputTokens?, reasoningEffort? }`
- * 字段传 `null` / `""` = 恢复默认（删掉那一列的值 / 整行，表里不留空行）。
- *
- * 校验放在这里而不是页面：这里是唯一能拒绝非法值的地方。**配错档位不会报错，只会让
- * 上游静默按默认跑**——那是最查不出来的一类问题，所以档位必须对得上该通道报的档位表。
- */
+// 写一个模型的设置。形状：`{ prefix, modelId, contextWindow?, maxOutputTokens?, reasoningEffort? }`，
+// 字段传 `null` / `""` = 恢复默认。设置只存在网关这一份（`model_setting` 表），插件退化成「照抄 `/api/models`」——
+// 早先网关和插件两头各存一份，容器部署下网关那条路径根本不存在，等于死代码。
+// 校验放在这里而不是页面：这里是唯一能拒绝非法值的地方。**配错档位不会报错，只会让上游静默按默认跑**。
 adminRoutes.post('/api/models/settings', async (c) => {
   const parsed = await readJsonBody(c);
   if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, 400);
@@ -349,8 +266,8 @@ adminRoutes.post('/api/models/settings', async (c) => {
       } else if (typeof value !== 'string') {
         throw new Error('reasoningEffort 要是字符串');
       } else {
-        // 档位必须在这个模型报的档位表里。取不到目录时**放行**（网络问题不该让人连改
-        // 都改不了），但记一条日志——静默接受一个上游不认的档位是更坏的结果。
+        // 档位必须在这个模型报的档位表里。取不到目录时**放行**（网络问题不该让人连改都改不了），
+        // 但记一条日志——静默接受一个上游不认的档位是更坏的结果。
         const source = primaryAccountOf(channel.id);
         let efforts: string[] | null = null;
         if (source) {
@@ -378,12 +295,7 @@ adminRoutes.post('/api/models/settings', async (c) => {
   return c.json({ ok: true, setting: saved });
 });
 
-/**
- * 读可见性配置。`models: null` = 这个通道全部显示（没设过限制）。
- *
- * 键是**短前缀**（`wb`），不是通道 id——模型 id 是 `wb-1/hy4free`，用户想隐藏
- * 「Hy4 这个模型」时不该对每个号各勾一次（见 private/docs/v2 §8）。
- */
+/** 读可见性配置。`models: null` = 这个通道全部显示。键是**短前缀**（`wb`）而不是通道 id——隐藏一个模型时不该对每个号各勾一次。 */
 adminRoutes.get('/api/models/visibility', (c) => {
   const visible = visibleModels();
   const out: Record<string, { listed: boolean; models: string[] | null }> = {};
@@ -396,22 +308,10 @@ adminRoutes.get('/api/models/visibility', (c) => {
   return c.json({ channels: out });
 });
 
-/**
- * 模型可见性。
- *
- * 形状（只认 JSON）：
- *   `{ prefix, action: 'toggle-list', listed: true|false }`  通道总闸
- *   `{ prefix, action: 'all' }`                              恢复全部显示
- *   `{ prefix, visible: ['m1','m2'] }`                       只显示这些
- *
- * 为什么放在 `/api/*` 而不是页面层：它改的是**网关配置**，和它要影响的 `/api/models`、
- * `/v1/models` 是一个东西的两端。留在页面层当 `POST /models` 的话，路径里就会出现三个
- * 同名的 `/models`（页面、管理 API、OpenAI 协议），看日志时分不清谁是谁。
- *
- * 旧版的表单分支（`x-www-form-urlencoded` + 303 回跳）随 SSR 页面一起删掉了。
- * `back` 字段因此消失——那是「提交完回哪一页」，纯页面概念，留在请求体里只会变成
- * 开放重定向的风险面。
- */
+// 模型可见性。形状（只认 JSON）：
+//   `{ prefix, action: 'toggle-list', listed: true|false }` 通道总闸 · `{ prefix, action: 'all' }` 恢复全部
+//   `{ prefix, visible: ['m1','m2'] }` 只显示这些
+// 放在 `/api/*` 而不是页面层：它改的是网关配置，和 `/api/models`、`/v1/models` 是同一个东西的两端。
 adminRoutes.post('/api/models/visibility', async (c) => {
   const parsed = await readJsonBody(c);
   if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, 400);
@@ -426,8 +326,7 @@ adminRoutes.post('/api/models/visibility', async (c) => {
     return c.json({ ok: true, prefix: channel.idPrefix, listed });
   }
   if (body.action === 'all') {
-    // 「全部显示」连总闸一起打开：只重置勾选而总闸关着，页面会显示「全部」而
-    // `/v1/models` 仍是空列表，跟按钮的字面意思对不上。
+    // 「全部显示」连总闸一起打开：只重置勾选而总闸关着，页面会显示「全部」而 `/v1/models` 仍是空列表。
     setListed(channel.idPrefix, true);
     setVisibleFor(channel.idPrefix, null);
     log(`模型可见性: ${channel.idPrefix} 恢复全部显示`);
@@ -444,31 +343,13 @@ adminRoutes.post('/api/models/visibility', async (c) => {
 
 // ---------------------------------------------------------------- 账本查询
 
-/**
- * 全局账本（14 天 × 三维度）。
- *
- * 账号页的 `/api/accounts/:id/usage` 是**单账号**版；概览页要的是全局趋势。两者共用
- * `usageSummary()`，差别只是传不传 `account`。
- *
- * `?account=` 收窄到单账号（和上面的 `/api/accounts/:id/usage` 等价，保留它是为了
- * 让「同一个聚合器换过滤条件」这条语义有个统一入口）。
- */
+/** 全局账本（14 天 × 三维度）。账号页的 `/api/accounts/:id/usage` 是单账号版，两者共用 `usageSummary()`，差别只是传不传 `account`。 */
 adminRoutes.get('/api/usage', async (c) => {
   const account = new URL(c.req.url).searchParams.get('account');
   return c.json(await usageSummary({ account: account || null }));
 });
 
-/**
- * 某一天按 24 小时拆开：概览页趋势图上「点一根柱子」进到的那个页面。
- *
- * `?date=YYYY-MM-DD` 必填，`?account=` 收窄到单账号（账号详情页的图也能点）。
- *
- * **费用在这一层算，不在前端算**：价目表和峰谷规则只有网关有，复制一份到 `web/src`
- * 以后必然两边不一致，而且不会有任何报错。返回里的 `hours` 恒 24 项。
- *
- * 日期非法、或者是未来 → 400（错误信封和其它路由一致）。`usageHourly()` 抛的是
- * `Error`，这里统一转成 400，不往上冒成 500。
- */
+/** 某一天按 24 小时拆开，`?date=YYYY-MM-DD` 必填。**费用在这一层算，不在前端算**：价目表和峰谷规则只有网关有，复制一份到 `web/src` 以后必然两边不一致且不报错。返回里的 `hours` 恒 24 项。 */
 adminRoutes.get('/api/usage/hourly', (c) => {
   const params = new URL(c.req.url).searchParams;
   const date = params.get('date');
@@ -485,12 +366,7 @@ adminRoutes.get('/api/usage/hourly', (c) => {
   }
 });
 
-/**
- * 签到日志 + 账号显示名。
- *
- * 日志文件里只有账号 id（`wb-1`），显示名是「通道 / 账号标签」——那是服务端知识
- * （要查通道注册表和账号文件）。前端自己拼等于把同一套逻辑抄一遍。
- */
+/** 签到日志 + 账号显示名。日志里只有账号 id（`wb-1`），显示名是「通道 / 账号标签」——服务端知识，前端自己拼等于抄一遍。 */
 adminRoutes.get('/api/checkin/log', (c) => {
   const accountNames: Record<string, string> = {};
   for (const channel of channels) {

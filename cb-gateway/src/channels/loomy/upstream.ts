@@ -1,13 +1,7 @@
-// Loomy 对话传输层：标准 OpenAI 兼容 `/chat/completions` 的透传。
-//
-// 和 WorkBuddy 一样，上游本来就是 OpenAI chunk 格式，所以流是原样转发，只顺带捞
-// 末尾的 `usage` 帧。区别在两点：
-//   1. 认证是 `token` 头 + `Authorization: Bearer`（session 当令牌），见 `auth.ts`。
-//   2. 必须带 `traceparent` 追踪头——实测 Loomy iModel 缺它时 `/chat/completions`
-//      会挂死直到超时。
-//
-// session 无刷新机制：401 时只能抛 `UpstreamError(401)` 让路由层把账号标成 invalid，
-// 用户在管理台重新登录。这里不做「换令牌重试」——没有令牌可换。
+// Loomy 对话传输层：标准 OpenAI 兼容 `/chat/completions` 的透传，流原样转发、只顺带捞 `usage` 帧。
+// 两个坑：① 必须带 `traceparent`，缺了 `/chat/completions` 会挂死直到超时；
+// ② 上游报的单次积分叫 **`points_consumed`**，账本读 `credit`——不做映射，Loomy 的消耗在账本里全是
+// `null`，统计静默偏小。session 无 refresh，401 只能让路由把账号标 invalid。
 
 import type { Account, ChatOutcome, ChatRequest } from '../../types.ts';
 import { usableCredential } from '../../core/accounts.ts';
@@ -28,11 +22,8 @@ function log(...args: unknown[]) {
 }
 
 /**
- * 归一化请求体：丢掉上游会拒绝或读错的字段。
- *
- * 客户端 `llm-completion.js` 发的 body 就带 `enable_thinking` / `chat_template_kwargs`
- * 两个非标准字段（对非 reasoning 模型是 noop）。DSH 发来的请求不会有这些，但可能带
- * `stream_options` 等 provider 私有字段，上游最差是忽略、最好也是拒，统一删掉。
+ * 归一化请求体：丢掉上游会拒绝或读错的 provider 私有字段（`stream_options` / `store` /
+ * `metadata` / `service_tier` / `prediction`）。
  */
 function normalizeWireBody(payload: any) {
   delete payload.stream_options;
@@ -42,16 +33,8 @@ function normalizeWireBody(payload: any) {
   delete payload.prediction;
 }
 
-/**
- * 把 Loomy 的 `usage` 归一成账本认识的口径。
- *
- * 上游报的单次积分叫 **`points_consumed`**，而账本统一读 `credit`（见 `ledger.ts`）。
- * 不做这个映射，Loomy 的积分消耗在账本里全是 `null`：概览的消耗不含它、按通道的图里
- * 它恒为 0——**字段名对不上不报错，只让统计静默偏小**。
- *
- * 归一化放在通道里而不是 `ledger.ts`：`points_consumed` 是 Loomy 专有的叫法，账本
- * 不该知道每个通道的私有字段名（和 `idPrefix`、客户端版本串同一条理由——通道自述）。
- */
+/** 把 Loomy 的 `usage` 归一成账本认识的口径。上游报的单次积分叫 **`points_consumed`**，账本统一读 `credit`——不做这个映射，Loomy 的消耗在账本里全是 `null`，概览和图表里恒为 0，**不报错只让统计偏小**。
+ * 归一化放通道里而不是 `ledger.ts`：`points_consumed` 是 Loomy 专有的叫法，账本不该知道各通道私有字段名。 */
 function normalizeUsage(usage: any) {
   if (!usage || typeof usage !== 'object') return usage;
   if (typeof usage.credit === 'number') return usage;
@@ -59,15 +42,8 @@ function normalizeUsage(usage: any) {
   return typeof points === 'number' ? { ...usage, credit: points } : usage;
 }
 
-/**
- * 一行日志里说清「这次请求贵不贵」。
- *
- * Loomy 是**前缀缓存**：首次出现的内容必然全价。所以「一次塞进几十万 token 全新内容」
- * 和「在已有对话上追加一句」成本差几十倍，而这两件事在只有 `chat done ... 142084ms`
- * 的日志里长得一模一样——事后翻账本才知道缓存命中只有 1.3%。
- *
- * 命中率低于一半时额外提示一句：正常多轮对话在 95% 上下，掉下来是异常信号。
- */
+/** 一行日志里说清「这次请求贵不贵」。Loomy 是**前缀缓存**：首次出现的内容必然全价，「塞进几十万 token 全新内容」和「在已有对话上追加一句」成本差几十倍，而这两件事在只有耗时的日志里长得一模一样。
+ * 命中率低于一半时额外提示——正常多轮对话在 95% 上下。 */
 function finishedLine(usage: any, accountId: string, model: string, status: number, started: number) {
   const base = `chat done account=${accountId} model=${model} status=${status} ${Date.now() - started}ms`;
   const prompt = usage?.prompt_tokens;
@@ -85,7 +61,6 @@ function finishedLine(usage: any, accountId: string, model: string, status: numb
   const ratio = cached / prompt;
   const rate = (ratio * 100).toFixed(1);
   const line = `${base} prompt=${prompt} cached=${cached} uncached=${uncached} hit=${rate}%${creditText}`;
-  // 低于 50% 才提示：正常多轮对话在 95% 上下，掉下来通常意味着「整段新内容一次性进来」。
   return ratio < 0.5 ? `${line} ⚠️ 缓存命中偏低（大段新内容按全价计费）` : line;
 }
 
@@ -107,9 +82,8 @@ export async function chatLoomy(account: Account, request: ChatRequest): Promise
   try {
     credential = await usableCredential(account, refreshLoomyCredential);
   } catch (error: any) {
-    // session 不存在或（更常见的）已过期。Loomy 没有 refresh token，所以这里一定是
-    // `permanent`——原样透传让路由把账号标 invalid。别用固定 401 表达这个语义：
-    // 网络类错误一旦混进来就会误封账号。
+    // session 不存在或（更常见的）已过期。Loomy 没有 refresh token，所以这里一定是 `permanent`——
+    // 原样透传让路由把账号标 invalid。别用固定 401 表达这个语义：网络类错误混进来会误封账号。
     throw asCredentialError(error, 'Loomy 凭据不可用') ?? new UpstreamError(401, error.message, { code: 'loomy_no_credential' });
   }
 
@@ -185,10 +159,8 @@ export async function chatLoomy(account: Account, request: ChatRequest): Promise
     };
   }
 
-  // 非流式：把 SSE 分片聚合成完整 completion 对象。
   const text = await upstream.text();
   const aggregated = aggregateSse(text);
-  // 返回给客户端的 body 保持上游原样（透传），只有交给账本的那份做换算。
   const normalized = normalizeUsage(aggregated.usage ?? null);
   request.onUsage?.(normalized);
   log(`${finishedLine(normalized, account.id, model, upstream.status, started)} (aggregated)`);

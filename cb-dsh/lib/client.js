@@ -1,21 +1,10 @@
-// Browser half of cb-dsh.
+// 插件的前端半边：在输入框右侧挂一个余额徽标，只在当前模型属于网关账号时显示。
 //
-// Shows a credits badge in the composer's right-hand strip
-// ("conversation.input.right") ONLY while the current session's model belongs
-// to one of the cb-gateway accounts; on any other model the slot renders
-// nothing.
+// 徽标显示什么（数字 / 今日用量 / 通道名 / 图标）全由网关决定，这里只轮询
+// `/api/accounts/<id>/badge` 并画出来。
 //
-// 徽标要显示什么（数字 / 今日用量 / 通道名 / 图标）**全部由网关决定**，插件只做
-// 三件事：轮询 `/api/accounts/<id>/badge`、订阅网关不可达 / 未配置这两个**只有
-// 前端才知道**的状态、把结果画出来。
-//
-// Two endpoints:
-//   gateway   默认 127.0.0.1:7801，但**地址可配**——整套东西可能跑在另一台机器上
-//             （dev 机的 Docker 容器），地址由 host 半边的控制服务保存
-//   control   127.0.0.1:7802  在 DSH 进程内，只负责读写「网关地址」
-//
-// `inject: ["slots"]` is required: without it apply() runs before the slots
-// service exists and the registration throws silently.
+// `inject: ["slots"]` 是必需的：没有它 apply() 会在 slots 服务存在之前跑，
+// 注册失败且**不报错**。
 window.__ModuleLoader__.load({
   id: "cb-dsh",
   factory: (require) => {

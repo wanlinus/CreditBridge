@@ -1,16 +1,6 @@
-// 网关自己的**网页**登录态：账号密码 + 会话 Cookie。
-//
-// 调用网关的有两类客户端，凭据完全不同，别混：
-//
-//   1. 浏览器（网关页面）→ 账号密码换会话 Cookie（这个文件）
-//   2. 程序（DSH 宿主进程、脚本）→ `Authorization: Bearer sk-…`（`core/keys.ts`）
-//
-// 密码用 scrypt 存，绝不明文。**改密码不影响任何 API key**：两者是独立凭据，
-// 改密码不该让 DSH 掉线，吊销一把 key 也不该让浏览器退出登录。
-//
-// v1 曾在这个文件里存一段明文 `token` 当机器凭据。v2 起彻底不认它——机器凭据只有
-// `api_key` 表一处。v4 起这份凭据也进库（`gateway_credential` 单行表），
-// **不在 JSON 文件里了**：`store/credentials.ts` 负责存取，本文件只留策略。
+// 网关自己的**网页**登录态：账号密码 + 会话 Cookie。两类客户端凭据完全不同，别混：
+// 浏览器用这里的会话 Cookie，程序（DSH、脚本）用 `Authorization: Bearer sk-…`（`core/keys.ts`）。
+// 两者独立：**改密码不影响任何 API key**，吊销 key 也不该让浏览器退出登录。凭据进 `gateway_credential` 单行表，本文件只留策略。
 
 import crypto from 'node:crypto';
 
@@ -55,9 +45,8 @@ function timingSafeEqualHex(a: string, b: string) {
 }
 
 function writeCredential(credential: GatewayCredential) {
-  // 写库是事务性的，不再需要原子写那套 tmp+rename：半截文件会让 `loadCredential()`
-  // 当「文件坏了」于是**重建默认账号 admin/admin**——网关密码被静默重置成默认值。
-  // 这是 v4 把凭据从文件搬进库的收益之一。
+  // 写库是事务性的，不再需要原子写那套 tmp+rename：半截文件会让 `loadCredential()` 当「文件坏了」
+  // 于是**重建默认账号 admin/admin**——网关密码被静默重置成默认值。
   putCredential(credential);
   cached = credential;
 }
@@ -75,12 +64,7 @@ function createDefault() {
   return credential;
 }
 
-/**
- * 读取凭据；库里没有就建默认的。
- *
- * **只取这四个字段**：v1 的 `gateway.json` 里多一个明文 `token`，那个字段在导入时
- * 就已经被丢掉了（`gateway_credential` 表没有它），不会再被写回来。
- */
+/** 读取凭据；库里没有就建默认的。**只取这四个字段**：v1 的明文 `token` 在导入时就已经被丢掉，不会再被写回来。 */
 export function loadCredential(): GatewayCredential {
   if (cached) return cached;
   const stored = getCredential();
@@ -110,11 +94,7 @@ export function verifyPassword(user: string, password: string) {
   return timingSafeEqualHex(hashPassword(password, credential.salt), credential.hash);
 }
 
-/**
- * 改密码。必须先验证旧密码。
- *
- * @returns 失败时返回人话原因；成功返回 null。
- */
+/** 改密码，必须先验证旧密码。@returns 失败时返回人话原因；成功返回 null。 */
 export function changePassword(currentPassword: string, nextPassword: string): string | null {
   const credential = loadCredential();
   if (!verifyPassword(credential.username, currentPassword)) return '当前密码不对';
@@ -131,12 +111,7 @@ export function changePassword(currentPassword: string, nextPassword: string): s
   return null;
 }
 
-/**
- * 从 Authorization 头里取 Bearer 的值。取不到返回 null。
- *
- * **只解析，不判断**：认不认这个凭据由 authGate 决定（它拿去问 core/keys.ts）。
- * 解析和判断分开，加一种凭据类型时不用动这个函数。
- */
+/** 从 Authorization 头里取 Bearer 的值，取不到返回 null。**只解析，不判断**：认不认这个凭据由 authGate 决定。 */
 export function extractBearer(header: any): string | null {
   if (typeof header !== 'string') return null;
   const match = /^Bearer\s+(\S+)\s*$/iu.exec(header);

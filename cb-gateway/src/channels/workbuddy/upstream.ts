@@ -1,11 +1,6 @@
-// WorkBuddy 对话传输层。
-//
-// 只有这个通道知道的对话细节都放这里：上游 host、客户端形状的 User-Agent、
-// 线上会拒绝的请求体归一化、渠道过滤短语改写、以及 SSE 透传。
-// 模型目录在 `models.ts`，额度与签到在 `usage.ts`，路由和账本在 `routes/` / `ledger.ts`。
-//
-// 和 Trae 不同，这里没有协议翻译：WorkBuddy 本来就用 OpenAI chunk 格式作答，
-// 流是原样转发的，只顺带看一眼末尾那个 `usage` 帧。
+// WorkBuddy 对话传输层。没有协议翻译：上游本来就是 OpenAI chunk 格式，流原样转发、只顺带看末尾 `usage` 帧。
+// 坑：上游的**渠道过滤认短语**——正文出现 "DeepSeek Harness" 就回 400/11128，换成别的产品名都放行，
+// 所以改写范围故意收得很窄，工具 schema / 系统指令 / 用户原话都不碰。
 
 import crypto from 'node:crypto';
 
@@ -21,12 +16,8 @@ const BILLING_BASE = 'https://www.codebuddy.cn';
 const CHAT_URL = `${CHAT_BASE}/v2/chat/completions`;
 
 /**
- * WorkBuddy 网关的渠道过滤会把这些说法当成"别家客户端"。
- * 移植自 dsh-workbuddy-connect 0.7.9-p1（MIT）。
- *
- * 过滤器认的是**短语**而不是整句：正文里出现 "DeepSeek Harness" 就回 400/11128，
- * 换成任何别的产品名都放行。所以改写范围故意收得很窄，只动这几处，工具 schema、
- * 系统指令和用户原话都不碰。
+ * WorkBuddy 网关的渠道过滤会把这些说法当成"别家客户端"（移植自 dsh-workbuddy-connect 0.7.9-p1）。
+ * 过滤器认的是**短语**而不是整句，所以只动这几处，工具 schema、系统指令和用户原话都不碰。
  */
 const CHANNEL_PHRASE_REWRITES = [
   [/deepseek\s+harness/giu, 'the harness'],
@@ -44,7 +35,6 @@ function log(...args: unknown[]) {
   if (logSink) logSink(`[workbuddy-upstream] ${args.join(' ')}`);
 }
 
-/** 32 位小写十六进制，客户端 `x-request-id` 就是这个形状。 */
 function requestId() {
   return crypto.randomUUID().replace(/-/gu, '');
 }
@@ -77,7 +67,6 @@ function sanitizeChannelPhrases(payload: any) {
   }
 }
 
-/** 把 `role: "developer"` 改写成 `system`：上游不认前者。 */
 function normalizeDeveloperRole(payload: any) {
   if (!Array.isArray(payload.messages)) return;
   for (const message of payload.messages) {
@@ -86,10 +75,8 @@ function normalizeDeveloperRole(payload: any) {
 }
 
 /**
- * 删掉 WorkBuddy 线上会拒绝或读错的请求字段。
- *
- * pi-ai 会带 `stream_options` 和几个 provider 私有上限，上游最好是忽略；
- * `tool_choice` 传对象形状必定 400，所以要摊平成字符串。
+ * 删掉 WorkBuddy 线上会拒绝或读错的请求字段。pi-ai 会带 `stream_options` 和几个 provider 私有上限，
+ * 上游最好是忽略；`tool_choice` 传对象形状必定 400，所以要摊平成字符串。
  */
 function normalizeWireBody(payload: any) {
   delete payload.stream_options;
@@ -153,25 +140,16 @@ function chatHeaders(credential: any) {
   return headers;
 }
 
-// ---------------------------------------------------------------- 对话
-
 /**
- * 转发一次对话补全。
- *
- * 请求体会先归一化、再按渠道过滤短语改写；上游的 SSE 原样透传（它本来就是
- * OpenAI chunk 格式），只在流里顺带捞 `usage`。
- *
- * v2 的三处变化：凭据从 `account` 拿（不再自己读盘）、响应不写 `res`（返回
- * `ChatOutcome` 让路由层发）、失败抛 `UpstreamError`（让路由层改账号状态）。
- * 这样它变成一个**纯函数式的适配器**：给账号和请求，出结果，其余一概不管。
+ * 转发一次对话补全：请求体先归一化、再按渠道过滤改写短语，上游 SSE 原样透传、只捞 `usage`。
+ * 凭据从 `account` 拿、响应返回 `ChatOutcome` 让路由层发、失败抛 `UpstreamError` 让路由层改账号状态。
  */
 export async function chatWorkBuddy(account: Account, request: ChatRequest): Promise<ChatOutcome> {
   const started = Date.now();
   const payload = request.body;
   const wantsStream = payload.stream !== false;
   payload.stream = true;
-  // 在 normalizeWireBody() 丢掉 off/minimal 之前先记下来，否则日志分不清
-  // 「客户端要求关闭」和「客户端根本没传」。
+  // 在 normalizeWireBody() 丢掉 off/minimal 之前先记下来，否则日志分不清「客户端要求关闭」和「根本没传」。
   const requestedEffort = typeof payload.reasoning_effort === 'string' ? payload.reasoning_effort : '(none)';
   normalizeDeveloperRole(payload);
   normalizeWireBody(payload);
@@ -187,11 +165,8 @@ export async function chatWorkBuddy(account: Account, request: ChatRequest): Pro
   const timeout = AbortSignal.timeout(600000);
   const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
 
-  // 401 时换一份凭据重发一次。
-  //
-  // 重试要用 `forceRefresh`：只重读账号文件的话，令牌没到期时读回来的还是同一枚
-  // 被拒的令牌，等于白试一次。请求体已经解析成 `payload` 了，直接重发它——不能再
-  // 从 req 读一遍，那是个已经读空的流。
+  // 401 时换一份凭据重发一次。重试要用 `forceRefresh`：只重读账号文件的话，令牌没到期时读回来的
+  // 还是同一枚被拒的令牌，等于白试。请求体已解析成 `payload`，直接重发它——不能从 req 再读一遍。
   const body = JSON.stringify(payload);
   let upstream: Response | null = null;
   for (let attempt = 0; ; attempt += 1) {
@@ -199,9 +174,8 @@ export async function chatWorkBuddy(account: Account, request: ChatRequest): Pro
     try {
       credential = await usableCredential(account, refreshWorkBuddyCredential, { forceRefresh: attempt > 0 });
     } catch (error: any) {
-      // **原样透传 `permanent`**：凭据有过期/暂时不可用两种，路由层据此决定要不要把
-      // 账号标成 invalid。直接 `new UpstreamError(502, msg)` 会把它压成普通 502，
-      // 于是过期的号永远显示「就绪」——用户只看到「所有模型都报错」。
+      // **原样透传 `permanent`**：凭据有过期/暂时不可用两种，路由层据此决定要不要把账号标成 invalid。
+      // 直接 `new UpstreamError(502, msg)` 会把它压成普通 502，过期的号就永远显示「就绪」。
       log(`chat ${model} credential error: ${error.message}`);
       throw asCredentialError(error, 'WorkBuddy 凭据不可用') ?? new UpstreamError(502, error.message, { code: 'workbuddy_no_credential' });
     }
@@ -240,8 +214,8 @@ export async function chatWorkBuddy(account: Account, request: ChatRequest): Pro
     const stream = (async function* (): AsyncGenerator<string> {
       let pending = '';
       let usage = null;
-      // 用流式 TextDecoder 解码：一个多字节字符可能跨两个 chunk，而 `toString('utf8')`
-      // 会把劈开的两半变成替换字符——既污染转发出去的 SSE，也足以整帧丢掉 usage。
+      // 用流式 TextDecoder 解码：一个多字节字符可能跨两个 chunk，`toString('utf8')` 会把劈开的两半
+      // 变成替换字符——既污染转发出去的 SSE，也足以整帧丢掉 usage。
       const decoder = new TextDecoder('utf-8');
       try {
         for await (const chunk of upstreamBody) {
@@ -263,11 +237,8 @@ export async function chatWorkBuddy(account: Account, request: ChatRequest): Pro
         const tail = usageFromSseLine(pending);
         if (tail) usage = tail;
       } catch (error: any) {
-        // 上游在流到一半时挂掉，或者客户端断开把上游 fetch 掐了（`request.signal`
-        // 会传到 fetch，abort 时这里抛的是 `AbortError`，有时干脆是 `undefined`——
-        // 不要写 `error.message`，那会在 error 为 undefined 时抛 TypeError，
-        // 把整段日志变成 `stream error: undefined`，什么线索都没留下）。
-        //
+        // 上游流到一半挂掉，或客户端断开把上游 fetch 掐了（抛的是 `AbortError`，有时干脆是 `undefined`——
+        // 不要写 `error.message`，那会抛 TypeError 把整段日志变成 `stream error: undefined`）。
         // 响应头早就发出去了，只能记一笔然后断流；路由层拿到的仍是 200。
         const reason = error?.message || (request.signal?.aborted ? '客户端断开（aborted）' : String(error) || '上游断了');
         log(`chat ${model} stream error: ${reason}`);

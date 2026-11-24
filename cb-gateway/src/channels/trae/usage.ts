@@ -1,27 +1,6 @@
-// Trae 的额度、每日签到，以及按请求结算消耗。
-//
-// 三件事都在账号 host（api.trae.cn）上，不在对话 host——对话是另一个服务。
-// 接口契约是从 Trae CN 3.3.104 自己的渲染层还原、并用真实账号验证过的：
-//
-//   POST /trae/api/v2/pay/ide_user_ent_usage
-//        {"require_usage": true, "req_source": 1}
-//        -> { usage_summary: { total_amount, consumed_amount, consumption_ratio },
-//             user_entitlement_pack_list: [...], is_credits_billing }
-//
-//   POST /trae/api/v2/ug/checkin_credits/status
-//        {"req_source": 1}
-//        -> { enable, checked_in, credits, extra_credits, did_checked_in }
-//
-//   POST /trae/api/v2/ug/checkin_credits/claim
-//        {"req_source": 1}
-//        -> { code: 0, message: "success" }   （幂等：今天已经领过也照样回 0）
-//        -> { code: 9074, message: "当前参与用户太多，请稍后再试" }  ← 瞬时，重试有意义
-//
-// 鉴权和对话路由一样用 `Cloud-IDE-JWT <token>`。`x-device-id` 用 `effectiveDeviceId()`
-// 挑出来的号（aha 注册号优先，没有就用自造号），见那个函数的说明。
-//
-// v2 起所有入口都收一个 `Account`，凡是「按账号攒下来的状态」都按账号分文件：
-// 签到记录、额度缓存。v1 是通道级单份，两个号会互相污染——A 签过了 B 就不再签。
+// Trae 的额度、每日签到。三件事都在账号 host（api.trae.cn）上，不在对话 host。
+// 坑：`claim` 幂等（今天已领也回 code 0），而 **9074 = 上游活动侧瞬时爆满**，不是凭据/设备号/版本号的问题；
+// 同一个号换掉 `selfDeviceId` 后常常第一次就成功。所有「按账号攒的状态」必须按账号分文件。
 
 import type { Account, CheckinRecord, CheckinStatus, Credits } from '../../types.ts';
 import { localDate } from '../../shared/clock.ts';
@@ -44,17 +23,10 @@ function log(...args: unknown[]) {
   if (logSink) logSink(`[trae-usage] ${args.join(' ')}`);
 }
 
-// ---------------------------------------------------------------- 传输
-
 async function postAccount(account: Account, pathname: any, body: any) {
   const credential = await usableCredential(account, refreshTraeCredential);
-  // 账号类接口（尤其是 claim）按 `x-device-id` 认设备。
-  //
-  // 优先用 aha 注册号（登录时若客户端注册过就带上），没有就用 `auth.ts` 自造的稳定号。
-  // **不能为空**：实测空串打 claim 回 9004（`The submitted order parameters are
-  // incorrect`），非空（哪怕 `1`、`abc`、16 位随机数）都放行。也别拿 `machineId`
-  // （64 位十六进制遥测号）顶——它不是账号接口认的设备身份，服务端会回
-  // `did_checked_in: false`。
+  // 账号类接口（尤其 claim）按 `x-device-id` 认设备。**不能为空**：实测空串打 claim 回 9004，
+  // 非空（哪怕 `1`、`abc`）都放行。也别拿 `machineId`（遥测号）顶——它不是账号接口认的身份。
   const deviceId = effectiveDeviceId(credential);
   const response = await fetch(`${ACCOUNT_BASE}${pathname}`, {
     method: 'POST',
@@ -91,44 +63,23 @@ async function postAccount(account: Account, pathname: any, body: any) {
   return doc;
 }
 
-/**
- * 上游业务码里**重试有意义**的那几个。
- *
- * 9074 = `当前参与用户太多，请稍后再试`。2026-11-11 / 11-12 实测：同一个账号、同一套
- * 请求头、同一个 `x-device-id`，00:09 连打三次都是 9074，隔 40 分钟再打就 `code 0`
- * 并真的发了 100 分（`did_checked_in` 只有真正领成的那个设备号才是 true）。所以它是
- * 上游活动侧的瞬时爆满，不是我们这边凭据、设备号或版本号的问题。
- */
+/** 上游业务码里**重试有意义**的那几个。9074 = 「当前参与用户太多」：实测同一账号、同一套请求头、同一个 `x-device-id`，00:09 连打三次都是 9074，隔 40 分钟再打就 `code 0` 并真发了 100 分。
+ * 所以它是上游活动侧的瞬时爆满，不是凭据/设备号/版本号的问题。 */
 const TRANSIENT_BIZ_CODES = new Set([9074]);
 
-/**
- * 遇到 9074 时**当场换设备号再打一次**，最多换几轮。
- *
- * ## 为什么要换号重试
- *
- * 用户 2026-11-14 的实测：tr-3 当天 10:05 / 10:15 / 10:45 / 11:45 四次 9074，
- * 换掉 `selfDeviceId` 后**第一次请求就成功**（+100）。9074 的文案是「参与用户太多」，
- * 但服务端显然也按设备维度在做限流/编排——换一个设备身份能绕开它这一轮的排队。
- *
- * ## 为什么只有 2 轮
- *
- * 换号不是万能药（2026-11-13 那天同一个号早上全挂、下午自己就过了），而且每轮要打
- * 一次 status + 一次 claim。2 轮是「给一次机会，但不把上游打满」的折中；剩下的靠
- * 调度器的重试阶梯，那一层有真正的退避。
- */
+/** 遇到 9074 时**当场换设备号再打一次**，最多换几轮。用户实测：同一天四次 9074，换掉 `selfDeviceId` 后第一次请求就成功——9074 文案说的是「用户太多」，但服务端显然也按设备维度限流。
+ * 只给 2 轮：换号不是万能药（也有同一号早上全挂、下午自己就过了），剩下的靠调度器的退避阶梯。 */
 const ROTATE_ON_9074_ROUNDS = 2;
 
-/** 把「换设备号」这件事落到凭据上（内存 + 库同时更新，走账号层的 `persist`）。 */
+/** 把「换设备号」落到凭据上（内存 + 库同时更新）。 */
 function rotateCheckinDevice(account: Account): string | null {
-  // aha 真号存在时它优先，换自造号不生效——那种情况换号没有意义，直接返回 null
-  // 让调用方老实按失败处理，不要给出「我换了但没用」的假象。
+  // aha 真号存在时它优先、换自造号不生效——那种情况换号没意义，返回 null 让调用方按失败处理。
   if (typeof account.credential?.checkinDeviceId === 'string' && account.credential.checkinDeviceId !== '') {
     return null;
   }
   const next = mintSelfDeviceId();
   const credential = { ...(account.credential || {}), selfDeviceId: next };
-  // 先改内存里的这一份：`postAccount` 读的就是传进来的 `account.credential`，
-  // 这一轮后续请求必须立刻用上新号。
+  // 先改内存：`postAccount` 读的就是传进来的 `account.credential`，这一轮后续请求要立刻用新号。
   account.credential = credential;
   // 再落库，否则重启回到旧号——那等于每次重启都白换一次。
   if (!updateAccount(account.id, { credential })) {
@@ -146,14 +97,11 @@ function withUpstreamCode(error: Error, code: number) {
   return tagged;
 }
 
-// ---------------------------------------------------------------- 额度
-
 const usageCache = new Map<string, { at: number; value: any }>();
 const usageInFlight = new Map<string, Promise<any>>();
 
 /**
- * 积分快照。`remaining` 是算出来的，不是上游给的：Trae 只报 `total_amount` 和
- * `consumed_amount`，没有余额字段。
+ * 积分快照。`remaining` 是算出来的、不是上游给的：Trae 只报 `total_amount` 和 `consumed_amount`。
  */
 export async function getTraeUsage(account: Account, options: { force?: boolean } = {}): Promise<Credits> {
   const cached = usageCache.get(account.id);
@@ -209,10 +157,6 @@ function invalidateTraeUsage(account: Account) {
   usageCache.delete(account.id);
 }
 
-// ---------------------------------------------------------------- 签到
-
-// 本地签到状态的读写统一在 `core/checkin-store.ts`。
-
 export async function getCheckinStatus(account: Account): Promise<CheckinStatus> {
   const doc = await postAccount(account, CHECKIN_STATUS_PATH, { req_source: 1 });
   return {
@@ -224,20 +168,8 @@ export async function getCheckinStatus(account: Account): Promise<CheckinStatus>
   };
 }
 
-/**
- * 领今天的积分。上游本身幂等；本地记录要保证「今天已经成功过一次」不会被后来
- * 一次失败覆盖掉。
- *
- * 失败**不抛异常**，而是返回一条 `status: 'error'` 的记录：这里必须先重查一次上游
- * 状态（见下面的 catch），确认不是「我们报错、服务端其实已经签到」。失败值不值得
- * 密集重试，由返回对象上的 `transient` 告诉调度器（`TRANSIENT_BIZ_CODES` 里的 9074）。
- *
- * ## 9074 会当场换设备号再试
- *
- * 见 `ROTATE_ON_9074_ROUNDS`：遇到 9074 就换一个 `selfDeviceId` 重新走一遍领取，
- * 最多换 2 轮。换号会写进账号凭据（持久化），所以下次签到用的就是新号。
- * 换完还失败就照常返回 error + `transient: true`，交给调度器的退避阶梯。
- */
+/** 领今天的积分。上游本身幂等；本地记录要保证「今天已经成功过一次」不会被后来一次失败覆盖掉。失败**不抛异常**而是返回 `status: 'error'` 的记录——必须先重查一次上游状态，确认不是「我们报错、服务端其实已签到」。
+ * 值不值得密集重试由返回对象的 `transient` 告诉调度器。遇到 9074 会当场换设备号再试（见 `ROTATE_ON_9074_ROUNDS`），换号写进凭据持久化，下次签到用新号。 */
 export async function claimCheckin(account: Account): Promise<CheckinRecord> {
   let last: CheckinRecord = await claimOnce(account);
   for (let round = 0; round < ROTATE_ON_9074_ROUNDS; round += 1) {
@@ -252,10 +184,8 @@ export async function claimCheckin(account: Account): Promise<CheckinRecord> {
 }
 
 /**
- * 跑**一轮**领取：读状态 → 没签就领 → 再读状态定结论。
- *
- * 抽出来是为了让 9074 的「换号重来」复用同一段逻辑——两处各写一遍的话，某天改了
- * 失败判据只改一处，另一处就会静默给出不一样的结论。
+ * 跑**一轮**领取：读状态 → 没签就领 → 再读状态定结论。抽出来是为了让 9074 的「换号重来」
+ * 复用同一段逻辑——两处各写一遍的话，某天改了失败判据只改一处，另一处就会静默给出不一样的结论。
  */
 async function claimOnce(account: Account): Promise<CheckinRecord> {
   const today = localDate();
@@ -293,9 +223,8 @@ async function claimOnce(account: Account): Promise<CheckinRecord> {
       invalidateTraeUsage(account);
     }
   } catch (error: any) {
-    // 领取报错不代表今天没领到：9074 那种瞬时爆满、或者别的入口（用户自己开客户端）
-    // 刚好在同一个时段领掉了，都会出现「我们这里抛错、服务端却是已签到」。所以失败后
-    // 再看一眼状态，已签到就记 `already`，别在面板上留一条假的「失败」。
+    // 领取报错不代表今天没领到：9074 那种瞬时爆满、或用户自己开客户端刚好在同一时段领掉了，
+  // 都会出现「我们抛错、服务端却已签到」。所以失败后再看一眼状态，已签到就记 `already`。
     const after = await getCheckinStatus(account).catch(() => null);
     if (after && after.checkedIn) {
       outcome = {

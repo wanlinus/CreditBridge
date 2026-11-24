@@ -1,7 +1,6 @@
-// WorkBuddy 凭据：刷新 + 注销 + 请求头要的版本串。
-//
-// 这里只剩两件**只有 WorkBuddy 上游知道**的事：怎么换新 token、怎么注销会话。
-// 凭据归账号层（`core/accounts.ts`）管，过期判断和并发刷新都在 `usableCredential()`。
+// WorkBuddy 凭据：刷新 + 注销 + 请求头要的版本串。凭据归账号层（`core/accounts.ts`）管，
+// 过期判断和并发刷新都在 `usableCredential()`。
+// 坑：版本号过期**不会得到明确的错误**——上游回的那句看起来像签名问题。
 
 import { credentialExpired, credentialUnavailable } from '../../shared/credential-error.ts';
 
@@ -20,22 +19,14 @@ function log(...args: unknown[]) {
 }
 
 /**
- * 报给上游的客户端版本串。
- *
- * **不在这里写死**：版本号属于通道自述（`workbuddyChannel.identity`），启动时由
- * `configureWorkBuddy()` 注入。这里的默认值只兜「没经过 `configure()`」的场景
- * （`npm run login -- workbuddy`）。
- *
- * 版本号过期不会得到明确的错误——上游回的那句看起来像签名问题。
+ * 报给上游的客户端版本串。**不在这里写死**：版本号属于通道自述（`workbuddyChannel.identity`），
+ * 启动时由 `configureWorkBuddy()` 注入；这里的默认值只兜 `npm run login -- workbuddy` 这类场景。
  */
 const versions = { clientVersion: '5.9.3', channelVersion: '2.165.0', ideVersion: '5.9.3' };
 
 /**
- * 由通道在 `configure()` 里注入真实版本（见 `workbuddyChannel.identity`）。
- *
- * **唯一的注入点**：`upstream.ts` / `models.ts` / `login.ts` 都从这里取。各处自己
- * 接一个 `configure*()` 的话，加一个版本字段就要改四个文件，漏一处就是某条请求带着
- * 旧版本号被上游拒。
+ * 由通道在 `configure()` 里注入真实版本。**唯一的注入点**：`upstream.ts` / `models.ts` /
+ * `login.ts` 都从这里取——各处自己接一个 `configure*()` 的话，加一个版本字段就要改四个文件。
  */
 export function configureWorkBuddy(identity: { clientVersion?: string; channelVersion?: string; ideVersion?: string }) {
   if (typeof identity.clientVersion === 'string' && identity.clientVersion) versions.clientVersion = identity.clientVersion;
@@ -44,10 +35,8 @@ export function configureWorkBuddy(identity: { clientVersion?: string; channelVe
 }
 
 /**
- * `WorkBuddy/<app> WorkBuddy/<app> CLI/<cli>` 形状的 UA。
- *
- * **对话、模型目录、登录轮询三处共用这一份**：原先三个文件各拼一遍，改版本号时
- * 漏一处就是一个带着旧版本号的请求。
+ * `WorkBuddy/<app> WorkBuddy/<app> CLI/<cli>` 形状的 UA。**对话、模型目录、登录轮询三处共用这一份**——
+ * 原先三个文件各拼一遍，改版本号时漏一处就是一个带着旧版本号的请求。
  */
 export function workBuddyUserAgent() {
   return `WorkBuddy/${versions.clientVersion} WorkBuddy/${versions.clientVersion} CLI/${versions.channelVersion}`;
@@ -63,17 +52,8 @@ function cliUserAgent() {
   return `CLI/${versions.channelVersion} CodeBuddy/${versions.channelVersion}`;
 }
 
-/**
- * 用 refreshToken 换新的一对 token。返回值交给 `usableCredential()` 写回账号——
- * 这里**不碰磁盘**。
- *
- * 抛的都是 `CredentialError`，必须分清两类（见 `shared/credential-error.ts`）：
- *   - refreshToken 缺失 / 上游 4xx 拒绝 → `permanent`，账号标 `invalid`，提示重新登录
- *   - 网络、上游 5xx、响应不是 JSON   → 暂时性，**不动账号状态**
- *
- * 混成裸 Error 的后果：被上层统一包成 502，而 502 不改状态，于是凭据过期后账号一直
- * 显示「就绪」，用户只看到「所有模型都报错」。
- */
+/** 用 refreshToken 换新的一对 token，返回值交给 `usableCredential()` 写回账号——这里**不碰磁盘**。抛的必须是 `CredentialError` 并分清两类：refreshToken 缺失 / 上游 4xx → `permanent`（账号标 invalid），网络 / 5xx / 非 JSON → 暂时性、不动账号状态。
+ * 混成裸 Error 会被包成 502，凭据过期后账号一直显示「就绪」。 */
 export async function refreshWorkBuddyCredential(credential: any) {
   if (!credential || typeof credential.refreshToken !== 'string' || credential.refreshToken === '') {
     throw credentialExpired('没有可用的 WorkBuddy refreshToken，请重新登录');
@@ -131,9 +111,8 @@ export async function refreshWorkBuddyCredential(credential: any) {
 }
 
 /**
- * 让服务端把这条会话注销掉（`POST /v2/plugin/auth/logout`）。
- *
- * 失败不抛：本地登出照常进行，只是想尽力别在服务端留一条还能刷新的会话。
+ * 让服务端把这条会话注销掉（`POST /v2/plugin/auth/logout`）。失败不抛：本地登出照常进行，
+ * 只是想尽力别在服务端留一条还能刷新的会话。
  */
 export async function revokeWorkBuddySession(credential: any) {
   const refreshToken = credential && typeof credential.refreshToken === 'string' ? credential.refreshToken : '';

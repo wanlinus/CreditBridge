@@ -1,16 +1,6 @@
-// Loomy 自助登录：短信验证码两步交互。
-//
-// 协议（逆向自客户端 `electron/xfyun/account-service.js`，2026-11-11）：
-//
-//   ① 向用户要手机号（`onPrompt`），POST `/login/phone/sendMsgCode` 拿 `msgid`
-//   ② 向用户要验证码（`onPrompt`），POST `/login/phone/checkCode` 拿 `session` + `userid`
-//   ③ `GET /userinfo/query/baseInfo`（session）拿昵称当默认 label
-//
-// 和 URL 授权流程的根本区别：这里没有「打开浏览器等回调」，而是**两轮表单输入**。
-// `onPrompt` 是登录任务层提供的通用交互口子（见 `core/login-tasks.ts`），前端轮询到
-// `prompt` 就渲染表单，用户提交后 resolve 回来。网关自己**不**开任何端口、不碰浏览器。
-//
-// session 14 天过期、无 refresh token——到期只能重新走一遍这条短信流程。
+// Loomy 自助登录：短信验证码两步交互（手机号 → 验证码），不是「开浏览器等回调」。
+// `onPrompt` 是登录任务层提供的通用交互口子：前端轮询到 `prompt` 就渲染表单，用户提交后 resolve。
+// 网关自己**不开任何端口、不碰浏览器**；session 14 天过期、无 refresh token，到期只能重走这条流程。
 
 import { pathToFileURL } from 'node:url';
 
@@ -18,10 +8,8 @@ import type { LoginResult } from '../../types.ts';
 import { fetchUserInfo, sendSmsCode, SESSION_TTL_MS, verifySmsCode } from './auth.ts';
 
 /**
- * 跑一次短信登录。
- *
- * `onPrompt` 会被先后调两次（手机号 → 验证码）。每次返回的 promise 在用户提交后
- * resolve；用户取消登录时 reject（由登录任务层在 abort 时触发）。
+ * 跑一次短信登录。`onPrompt` 会被先后调两次（手机号 → 验证码），每次返回的 promise 在用户
+ * 提交后 resolve、取消登录时 reject（由登录任务层在 abort 时触发）。
  */
 export async function runLoomyLogin(
   options: { onPrompt?: (prompt: any) => Promise<string>; signal?: AbortSignal } = {},

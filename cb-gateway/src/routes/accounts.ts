@@ -1,11 +1,5 @@
-// 账号的管理面：`/api/accounts/*`（JSON）。
-//
-// v1 没有这个模块——账号是通道自带的单例，加号就是改配置文件。v2 一个通道挂 N 个号，
-// 「加号」变成一次交互式登录，必须有个地方起任务、轮询进度、改标签、停用、删除。
-//
-// **没有页面层了**（2026-11-13 SPA 转正）：旧的 `/accounts` 页面连同它的 8 个表单动作
-// 一起删掉，界面在 `web/src/views/AccountsView.vue`。
-//
+// 账号的管理面：`/api/accounts/*`（JSON）。v2 一个通道挂 N 个号，「加号」变成一次交互式登录，
+// 所以要有地方起任务、轮询进度、改标签、停用、删除。**没有页面层**（2026-11-13 SPA 转正）。
 // 认证：全在 `auth/middleware.ts` 的闸后面（Bearer 或会话 Cookie）。
 
 import { Hono } from 'hono';
@@ -79,14 +73,10 @@ accountsRoutes.get('/api/accounts', async (c) => {
       label: channel.label,
       idPrefix: channel.idPrefix,
       multiAccount: channel.multiAccount !== false,
-      // 能力位是**自述**的，且只有 `core/channel-info.ts` 一个来源：界面用它们决定
-      // 按钮显不显示，而不是在前端写一份通道清单（AGENTS.md 的硬约束）。三处响应
-      // 各抄一遍的话，加第五个能力位时必然漏一处，而漏掉的表现是「按钮永远不出现」。
+      // 能力位是**自述**的，且只有 `core/channel-info.ts` 一个来源：三处响应各抄一遍的话，
+      // 加第五个能力位时必然漏一处，而漏掉的表现是「按钮永远不出现」。
       ...capabilitiesOf(channel),
-      /**
-       * 上游会不会报 token 用量。`false` 的通道在账本里恒为 0，界面上要显示 `—`
-       * 而不是 0——「统计不到」和「确实没用过」是两回事。
-       */
+      /** 上游会不会报 token 用量。`false` 的通道在账本里恒为 0，界面显示 `—`——「统计不到」和「确实没用过」是两回事。 */
       reportsTokens: channel.reportsTokens !== false,
       accounts: accountsOf(channel.id).map((account) => account.id),
     })),
@@ -107,12 +97,7 @@ accountsRoutes.get('/api/accounts/:channel/login/:taskId', (c) => {
   return c.json(publicTask(task));
 });
 
-/**
- * 表单式登录（Loomy 短信验证码）：用户提交一个输入，回填给正在等输入的 prompt。
- *
- * 形状 `{value}`。通道拿到值之后要么发下一个 prompt、要么完成登录，两者都会反映在
- * 任务快照里，前端下一次轮询自然看到——这里不回任务状态，避免两个地方各维护一份。
- */
+/** 表单式登录（Loomy 短信验证码）：提交一个输入，回填给正在等输入的 prompt。**不回任务状态**——前端下一次轮询自然看到，避免两处各维护一份。 */
 accountsRoutes.post('/api/accounts/:channel/login/:taskId/answer', async (c) => {
   const channelId = c.req.param('channel');
   const taskId = c.req.param('taskId');
@@ -142,8 +127,7 @@ accountsRoutes.post('/api/accounts/:id/verify', async (c) => {
     markReady(found.account.id);
     return c.json({ ok: true, profile });
   } catch (error: any) {
-    // 「检测」是用户主动验活，正是最该让状态反映真实情况的地方：凭据永久失效就标
-    // invalid，管理台上那个号立刻变成「凭据失效」，而不是继续显示「就绪」。
+    // 「检测」是用户主动验活，正是最该让状态反映真实情况的地方：凭据永久失效就标 invalid，
     // 暂时性故障（网络 / 上游 5xx）只回报错误，不动状态。
     if (isCredentialError(error) && error.permanent) markInvalid(found.account.id, error.message);
     return c.json({ error: { message: error.message, type: 'upstream_error' } }, 502);
@@ -163,8 +147,7 @@ accountsRoutes.patch('/api/accounts/:id', async (c) => {
     if (body.status === 'disabled' || body.status === 'ready') {
       setStatus(found.account.id, body.status, { message: body.status === 'disabled' ? '管理台手动停用' : undefined });
     } else {
-      // cooldown / invalid 是网关自己根据上游反应写进去的，不接受外部直接指定——
-      // 手动设一个「凭据失效」只会让人以为真坏了。
+      // cooldown / invalid 是网关自己根据上游反应写进去的，不接受外部直接指定——手动设一个「凭据失效」只会让人以为真坏了。
       return c.json({ error: { message: `不能把账号状态直接设成 ${body.status}`, type: 'bad_request' } }, 400);
     }
   }
@@ -181,18 +164,9 @@ accountsRoutes.delete('/api/accounts/:id', (c) => {
 
 // ---------------------------------------------------------------- 账号子资源（面板用）
 
-/**
- * 单账号详情。
- *
- * **为什么不复用 `GET /api/accounts` 再过滤**：那两个响应不是同一个东西。列表版每行带
- * `totalRemain` / `usedTotal` / `todayTokens`（要跑 `accountsWithSpend()`，会读凭据缓存和账本），
- * 而详情页要的是**带通道元数据的那一份**（`channelLabel` / `idPrefix` / 能力位）。
- * 让前端拿列表数据 + 三个子资源自己拼，等于把「详情页由哪些字段组成」这件事搬进前端，
- * 而它本来是服务端知识。
- *
- * **不发网络请求**：只读本地账号文件 + 通道自述。余额、用量、签到各有自己的端点，
- * 前端按需分别拉——把它们塞进这里会让每次刷新详情都打一遍上游。
- */
+// 单账号详情。**不复用 `GET /api/accounts` 再过滤**：列表版每行带余额和用量（要跑 `accountsWithSpend()`），
+// 详情页要的是**带通道元数据的那一份**；让前端拿列表数据自己拼等于把服务端知识搬进前端。
+// **不发网络请求**：余额、用量、签到各有自己的端点，塞进这里会让每次刷新详情都打一遍上游。
 accountsRoutes.get('/api/accounts/:id', (c) => {
   const found = accountWithChannel(c.req.param('id'));
   if (!found) return c.json({ error: { message: `没有账号 ${c.req.param('id')}`, type: 'not_found' } }, 404);
@@ -233,16 +207,9 @@ accountsRoutes.get('/api/accounts/:id/credits', async (c) => {
   return c.json(await buildCredits(found.channel, found.account));
 });
 
-/**
- * 手动「刷新积分」：**绕过 30 秒缓存**，直接问上游。
- *
- * 为什么是 POST 而不是再来一个 GET：GET 的语义是「读我已有的」，这里是「让上游动一下」。
- * 而且浏览器和中间的代理会把 GET 缓存住，用过 POST 就不存在这个歧义。
- *
- * 账号级和通道级两个入口，返回体同构：`{ credits: { <账号 id>: {totalRemain, usedTotal,
- * limitTotal, prevRemain, prevAt, creditsAt, error} } }`。界面拿到后按 id 覆盖那几行就行，
- * 不用整页重拉——重拉会把「正在展开的更多菜单」等界面状态打断。
- */
+// 手动「刷新积分」：**绕过 30 秒缓存**，直接问上游。用 POST 不用 GET：GET 语义是「读我已有的」，
+// 而浏览器和中间的代理会把 GET 缓存住。返回体同构，界面拿到后按 id 覆盖那几行，不用整页重拉
+// （重拉会打断「正在展开的更多菜单」这类界面状态）。
 function creditRows(reads: Record<string, { snapshot: { remain: number | null; used: number | null; limit: number | null; prevRemain: number | null; prevAt: number | null; at: number }; error: string | null }>) {
   const credits: Record<string, unknown> = {};
   for (const [id, read] of Object.entries(reads)) {
@@ -283,15 +250,7 @@ accountsRoutes.get('/api/accounts/:id/usage', async (c) => {
   return c.json(await usageSummary({ account: found.account.id }));
 });
 
-/**
- * 输入框右边那个徽标要显示的东西：主数字 + 今日用量文案。
- *
- * 和 `/credits` 的区别：那个是**余额的完整快照**（套餐明细、账号信息、签到状态，
- * 给面板和账号页用），这个是**两个字符串**（给 14px 高的地方用）。分开是因为使用
- * 频率差一个量级——徽标每 60 秒轮询一次，面板打开才拉一次。
- *
- * `no-store`：余额是实时数字，缓存住会让「签完到 / 花完额度」看不出来。
- */
+/** 输入框右边那个徽标要显示的东西：主数字 + 今日用量文案。和 `/credits` 的区别是使用频率差一个量级——徽标每 60 秒轮询。`no-store`：余额是实时数字，缓存住会让「签完到 / 花完额度」看不出来。 */
 accountsRoutes.get('/api/accounts/:id/badge', async (c) => {
   const found = accountWithChannel(c.req.param('id'));
   if (!found) return c.json({ error: { message: `没有账号 ${c.req.param('id')}`, type: 'not_found' } }, 404);
@@ -330,17 +289,8 @@ accountsRoutes.post('/api/accounts/:id/checkin', async (c) => {
   return c.json({ ok: record.status === 'checked' || record.status === 'already', result: record });
 });
 
-/**
- * 签到的响应信封。
- *
- * 形状沿用旧版按通道的签到接口：`today` / `last` / `status` 三段，改了要连消费方一起
- * 改（网关自己的账号页、`/api/accounts` 的调用方）。`today` 是本机日历日，`last` 是本地
- * 记录，`status` 是上游状态（通道没有状态接口时为 null）。查上游失败时 `error` 带原因，
- * `canClaim` 表示这个通道能不能手动领取。
- *
- * **`canClaim` 不看开关**：手动签到是允许的（用户点了就是显式意图），开关只管自动。
- * 界面拿 `checkinEnabled` 自己决定要不要提示「已关闭自动签到」。
- */
+// 签到的响应信封。形状沿用旧版按通道的签到接口：`today` / `last` / `status` 三段，改了要连消费方一起改。
+// **`canClaim` 不看开关**：手动签到是允许的（用户点了就是显式意图），开关只管自动。
 async function checkinEnvelope(account: Account, channel: any) {
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;

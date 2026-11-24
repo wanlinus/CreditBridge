@@ -1,11 +1,6 @@
-// 统一的登录入口：`npm run login -- <通道 id>`。
-//
-// 登录是交互式的（开浏览器、等人操作，最长 5 分钟），所以网关那边做成了「后台任务 +
-// 前端轮询」，这里则是阻塞式的一次性 CLI。想知道哪个通道支持自助登录，看它有没有
-// 实现 `Channel.login`。
-//
-// 和网关里那条路走的是同一个出口（`materializeAccount`）：凭据落成哪个账号、要不要
-// 复用已有的号，两边必须一致，否则「CLI 登了两次」和「网页登了两次」会留下两种结果。
+// 统一的登录入口：`npm run login -- <通道 id>`。登录是交互式的（开浏览器、等人操作，最长 5 分钟），
+// 网关那边做成「后台任务 + 前端轮询」，这里是阻塞式的一次性 CLI。哪个通道支持自助登录看它有没有实现 `Channel.login`。
+// 和网关里那条路走同一个出口（`materializeAccount`）：凭据落成哪个账号、要不要复用已有的号，两边必须一致。
 
 import { channelById, channels } from './channels/index.ts';
 import { loadAccounts } from './core/accounts.ts';
@@ -33,8 +28,7 @@ channel.configure?.({ log: console.log, config: (await import('./config.ts')).co
 
 console.log(`开始登录通道：${channel.id}（${channel.label}）`);
 
-// 表单式登录（Loomy 短信验证码）没有浏览器回调，改用终端读输入兜底。
-// URL 式登录（WorkBuddy / Trae / Qoder）不用 onPrompt，传入也无妨。
+// 表单式登录（Loomy 短信验证码）没有浏览器回调，改用终端读输入兜底。URL 式登录不用 onPrompt，传入也无妨。
 const readline = (await import('node:readline')).createInterface({ input: process.stdin, output: process.stdout });
 const onPrompt = (prompt: any) =>
   new Promise<string>((resolve) => readline.question(`${prompt.label}：`, (answer: string) => resolve(answer)));

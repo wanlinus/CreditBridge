@@ -172,7 +172,7 @@ check('空映射不再报错，直接新建', emptyMap.ok === true && emptyMap.a
 const emptyMapText = read();
 check('把 {} 换成了块形式', emptyMapText.includes('    providers:\n') && !emptyMapText.includes('providers: {}'));
 check('qb 在 providers 下面（缩进 6）', /^ {6}qb:$/mu.test(emptyMapText));
-check('字段缩进 8', /^ {8}baseURL: http:\/\/10\.0\.0\.45:7801\/v1$/mu.test(emptyMapText));
+check('字段缩进 8', /^ {8}baseURL: http:\/\/192\.168\.1\.100:7801\/v1$/mu.test(emptyMapText));
 check('没有破坏后面的条目', emptyMapText.includes('- id: permission'));
 
 console.log('--- 9. 连 providers: 键都没有，但有 config: ---');

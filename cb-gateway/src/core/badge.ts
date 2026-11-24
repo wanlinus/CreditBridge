@@ -1,23 +1,8 @@
-// 徽标的展示数据：主数字（余额）+ 今日用量文案。
+// 徽标的展示数据。**由网关组装**：显示积分还是 token 是通道语义，
+// 放前端的话每加一个计费方式不同的通道都要改插件。
 //
-// ## 为什么由网关组装，而不是让插件自己算
-//
-// 「徽标上显示什么」其实是一套**通道语义**：
-//
-//   · 有积分就显示积分（那是钱，`0.15` 和 `0` 差很多）；
-//   · 积分是 0 但有 token 就显示 token —— **免费模型是真实存在的**
-//     （WorkBuddy 的 `deepseek-v4.1-flash` / `hy4free` 上游就报 0，一直显示
-//     「今日 0」等于什么都没说，用户会以为是 bug）；
-//   · 两样都没有（499 中断、上游没回用量）就只显示请求次数，别把 null 说成 0。
-//
-// 这套判断以前在插件里。放在前端意味着每加一个计费方式不同的通道就要改插件、
-// 重新打包，漏了就静默显示错的东西。搬到网关之后，通道怎么变，插件都不用动——
-// 插件只剩「把这两个字符串画出来」。
-//
-// ## 图标不在这里
-//
-// 图标跟着 `/api/channels` 走并让客户端缓存 5 分钟；徽标本身每 60 秒轮询一次，
-// 把图标塞进来等于每轮白发十几 KB（见 `core/channel-icons.ts`）。
+// 免费模型上游就报 `credit: 0`（WorkBuddy 的 hy4free），所以积分 0 时要退回显示 token，
+// 否则一直显示「今日 0」像是 bug。
 
 import type { Account, Channel } from '../types.ts';
 import { buildCredits } from './credits.ts';
@@ -25,26 +10,26 @@ import { usageAccountToday } from '../store/usage.ts';
 
 /** `GET /api/accounts/<id>/badge` 的响应体。 */
 export interface BadgeView {
-  /** 通道 id。插件用它去 `/api/channels` 的缓存里查图标。 */
+  /** 插件用它去 `/api/channels` 的缓存里查图标。 */
   channel: string;
   /** 「Loomy · 示例账号」——悬停提示和图标 alt。 */
   title: string;
-  /** 主数字：余额；取不到是「—」；通道没有余额接口是「已连接」。 */
+  /** 余额；取不到是「—」；通道没有余额接口是「已连接」。 */
   amount: string;
   /** 今日用量文案；没有可说的就是空串。 */
   today: string;
-  /** 取不到余额时的原因；正常为 `null`。插件放进悬停提示。 */
+  /** 取不到余额时的原因；正常为 `null`。 */
   note: string | null;
 }
 
-/** 积分数：100 以上取整，以下保留三位小数（`0.15` 这种小额要看得见）。 */
+/** 100 以上取整，以下保留三位小数（`0.15` 这种小额要看得见）。 */
 function fmt(n: number): string {
   if (!Number.isFinite(n)) return '—';
   if (n >= 100) return String(Math.round(n));
   return String(Math.round(n * 1000) / 1000);
 }
 
-/** `1000000` → `1M`，`192000` → `192K`，`96000` → `96K`。 */
+/** `192000` → `192K`。 */
 function fmtSize(n: number): string {
   if (!Number.isFinite(n)) return '—';
   if (n >= 1_000_000) {

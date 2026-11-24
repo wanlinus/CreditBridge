@@ -1,22 +1,6 @@
-// WorkBuddy 自助登录：网页登录 + 轮询取 token，完全不碰桌面客户端。
-//
-// 协议（逆向自客户端 `ExternalLinkAuthenticationProvider`）：
-//
-//   ① POST /v2/plugin/auth/state?platform=workbuddy
-//        头：X-No-Authorization / X-No-User-Id / X-No-Enterprise-Id / X-No-Department-Info
-//        → { state, authUrl }
-//   ② 浏览器打开 authUrl（https://www.workbuddy.cn/login?platform=workbuddy&state=…）
-//   ③ 每秒 GET /v2/plugin/auth/token?state=<state>
-//        code 11217 = 还在等用户操作，其余非 0 即失败
-//        成功时 data 是 { accessToken, refreshToken, expiresIn, refreshExpiresIn, tokenType, domain, … }
-//   ④ GET /v2/plugin/login/account?state=<state>（Bearer）→ { uid, nickname, … }
-//
-// 它不是标准 OAuth2：借了 OAuth2 的凭据形状（Bearer / expiresIn / refresh_token）和
-// scope 语义，但没有 client 凭据、没有 PKCE、也没有 code→token 的兑换步骤，更接近
-// RFC 8628 设备码流程的简化版（把 device_code + user_code 合并成一个 state）。
-//
-// 关键收益：拿到的 token 是**明文 JWT**，不像客户端本地文件那样套着 `$wbEncrypted`
-// 信封——所以装不装客户端都能用。
+// WorkBuddy 自助登录：网页登录 + 轮询取 token，完全不碰桌面客户端。它不是标准 OAuth2——没有 client
+// 凭据、没有 PKCE、也没有 code→token 兑换，更接近 RFC 8628 设备码流程的简化版（device_code + user_code
+// 合并成一个 state）。收益：拿到的 token 是**明文 JWT**，不像客户端本地文件那样套着 `$wbEncrypted` 信封。
 
 import { pathToFileURL } from 'node:url';
 
@@ -25,8 +9,7 @@ import { workBuddyUserAgent } from './auth.ts';
 
 const API_BASE = 'https://copilot.tencent.com';
 const PREFIX_PATH = '/plugin';
-// auth/state 的 platform 参数。客户端取自 product.json 的
-// authentication.attributes.platform，国内个人版就是 workbuddy。
+// auth/state 的 platform 参数。客户端取自 product.json 的 authentication.attributes.platform。
 const PLATFORM = 'workbuddy';
 /** 客户端写死的「还在等用户操作」返回码。 */
 const PENDING_CODE = 11217;
@@ -34,8 +17,7 @@ const POLL_INTERVAL_MS = 1000;
 const TIMEOUT_MS = 5 * 60 * 1000;
 const DOMAIN = 'www.workbuddy.cn';
 
-// 实测登录接口不校验 UA（用 curl 裸调也能过），这里用客户端的串保底。
-// 版本号与 `auth.ts` 同源，别在这里另抄一份。
+// 实测登录接口不校验 UA（用 curl 裸调也能过），这里用客户端的串保底。版本号与 `auth.ts` 同源，别另抄一份。
 function userAgent() {
   return workBuddyUserAgent();
 }
@@ -100,9 +82,8 @@ async function pollToken(state: string, signal?: AbortSignal) {
   while (Date.now() < deadline) {
     await sleep(POLL_INTERVAL_MS, signal);
     attempt += 1;
-    // 取消可能来自「用户又点了一次登录」，也可能来自「用户点了退出」——后者由
-    // server.ts 的 /v1/logout 先 abort 再登出，否则挂起的登录会在授权完成时把
-    // 凭据写回去，把刚点下的退出复活。所以文案只说取消，不猜原因。
+    // 取消可能来自「用户又点了一次登录」，也可能来自「用户点了退出」——后者由 server.ts 的
+    // /v1/logout 先 abort 再登出，否则挂起的登录会在授权完成时把凭据写回去、把刚点下的退出复活。
     if (signal?.aborted) throw new Error('登录已取消');
     try {
       const response = await fetch(url, { headers: loginHeaders(), signal: AbortSignal.timeout(10000) });
@@ -127,8 +108,7 @@ async function pollToken(state: string, signal?: AbortSignal) {
 }
 
 /**
- * ④ 用 token 取一次账号信息，拿 uid 和昵称。
- * 失败不算致命——登录本身已经成功，只是面板上会少一个名字。
+ * ④ 用 token 取一次账号信息，拿 uid 和昵称。失败不算致命——登录本身已经成功，只是面板上会少个名字。
  */
 async function fetchAccount(state: string, accessToken: string) {
   try {
@@ -152,13 +132,8 @@ function epochFromSeconds(seconds: unknown, fallbackDays: number) {
 }
 
 /**
- * 跑一次登录。拿到的凭据**不写盘**，交给账号层（`core/accounts.ts`）落进
- * `gateway.db` 的 `account` 表。
- *
- * **不负责打开浏览器。** 网关是无头服务，容器/服务器上没有浏览器，而有浏览器的
- * 那台机器通常是用户自己的——面板跑在用户的 DSH 里，打开登录页是它的事。
- * 这里只把地址交出去（`onUrl` 回调 + 控制台）。
- *
+ * 跑一次登录。拿到的凭据**不写盘**，交给账号层（`core/accounts.ts`）落进 `gateway.db` 的 `account` 表。
+ * **不负责打开浏览器**：网关是无头服务，有浏览器的那台通常是用户自己的，这里只把地址交出去。
  * @param options.onUrl 拿到登录页地址时回调一次，供面板显示并打开。
  * @param options.signal 用户再点一次登录时会被 abort，这里要立刻收摊。
  */
@@ -185,8 +160,7 @@ export async function runWorkBuddyLogin(
     username: account && typeof account.nickname === 'string' ? account.nickname : '',
     source: 'login',
   };
-  // **不写盘**：凭据归账号层（`core/accounts.ts`）。登录只管把东西交出去，
-  // 存到哪个文件、算第几号账号，是网关的事。
+  // **不写盘**：凭据归账号层（`core/accounts.ts`），存到哪、算第几号账号都是网关的事。
   console.log(
     `[workbuddy] 登录成功 uid=${credential.uid || '(未知)'} 名字=${credential.username || '(未知)'} ` +
       `到期=${new Date(credential.expiresAt).toLocaleString('zh-CN')}`,
@@ -198,7 +172,6 @@ export async function runWorkBuddyLogin(
       username: credential.username,
       domain: credential.domain,
     },
-    // 默认 label 用上游昵称（「示例账号」），没有就让账号层退回「账号N」。
     label: credential.username,
   };
 }

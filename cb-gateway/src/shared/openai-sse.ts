@@ -1,26 +1,11 @@
-// OpenAI 形状的 SSE 工具。
-//
-// WorkBuddy 和 Loomy 的上游回的就是 OpenAI chunk 格式（原样透传），所以这两个读取
-// 函数共用，而不是每个通道抄一份。Trae 是自己**合成** OpenAI chunk 的，它的解析在
-// `channels/trae/upstream.ts` 里，不走这里——别把「输出是 OpenAI 形状」和「用这份
-// 工具解析」混成一回事。
-//
-// ## 参数类型为什么收紧了（2026-11-22）
-//
-// 这两个函数原来的签名是 `(line: any)` / `(text: any)`。`any` 的代价在这里很具体：
-// 传错一个非字符串（比如把一个 chunk 对象传进来）不会报错，`line.startsWith` 直接抛
-// `TypeError`，而调用点在流的读取循环里——那个异常会被当成「上游挂了」，记成 502。
-//
-// 收成 `string` 之后，同样的错误在**类型检查时**就暴露。
+// OpenAI 形状的 SSE 工具。WorkBuddy 和 Loomy 的上游回的就是 OpenAI chunk 格式，所以这两个函数共用；
+// Trae 是自己**合成** OpenAI chunk 的，解析在 `channels/trae/upstream.ts`，不走这里。
+// 参数类型收成 `string` 是刻意的：原先 `any` 传错一个对象不会报错，`line.startsWith` 在流的读取循环里抛
+// `TypeError`，会被当成「上游挂了」记成 502；收成 `string` 后同样的错误在类型检查时就暴露。
 
 import type { ChatUsage } from '../types.ts';
 
-/**
- * 从一行 SSE 里捞出最后一个 `usage` 对象（有的话）。
- *
- * 返回 `null` 的三种情况都是正常的，不是错误：心跳行、`[DONE]`、被拆在两次读取之间
- * 的半截帧（解析失败）。
- */
+/** 从一行 SSE 里捞出 `usage` 对象（有的话）。返回 `null` 的三种情况都正常：心跳行、`[DONE]`、被拆在两次读取之间的半截帧。 */
 export function usageFromSseLine(line: string): ChatUsage | null {
   if (!line.startsWith('data:')) return null;
   const data = line.slice(5).trim();

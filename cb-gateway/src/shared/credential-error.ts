@@ -1,17 +1,9 @@
-// 「本地这份凭据已经不能用了」——必须和「上游暂时不通」区分开。
+// 「本地这份凭据已经不能用了」——必须和「上游暂时不通」区分开，两者都表现成 502 但处置相反：
+// `permanent: true`（refreshToken 过期/被拒、没有刷新机制）→ 账号标 `invalid`，提示重新登录；
+// `permanent: false`（网络断、上游 5xx、响应不是 JSON）→ **不动账号状态**，否则一次抖动就把号封了。
 //
-// 两者都表现成 502，但处置完全相反：
-//
-//   permanent: true   refreshToken 过期/被拒、或压根没有刷新机制
-//                     → 刷多少次都同样结果，账号标 `invalid`，提示去重新登录
-//   permanent: false  网络断了、上游 5xx、响应不是 JSON
-//                     → 下次可能就好了，**不动账号状态**，否则一次抖动就把号封了
-//
-// 判据只看「重试有没有意义」，不看错误长什么样。
-//
-// 继承 `UpstreamError` 是为了复用路由层「按 status 决定回什么」那条路，多出来的只有
-// `permanent` 一个布尔。**通道包一层时必须原样透传**（用 `asCredentialError`），
-// 丢了它账号会永远显示「就绪」而实际刷不出凭据。
+// 继承 `UpstreamError` 是为了复用路由层「按 status 决定回什么」。**通道包一层时必须原样透传**
+// （用 `asCredentialError`），丢了它账号会永远显示「就绪」而实际刷不出凭据。
 
 import { UpstreamError } from './upstream-error.ts';
 

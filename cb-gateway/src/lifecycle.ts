@@ -1,7 +1,5 @@
-// 进程生命周期：停机钩子、父进程看护、启动预热。
-//
-// 单独成模块是因为 `/api/shutdown` 在路由里，而它要关的 server 实例在入口创建——
-// 两边互相引用会成环。这里放一个回调槽，入口注册、路由触发。
+// 进程生命周期：停机钩子、父进程看护、启动预热。单独成模块是因为 `/api/shutdown` 在路由里，
+// 而它要关的 server 实例在入口创建——两边互相引用会成环。这里放一个回调槽，入口注册、路由触发。
 
 import { log } from './logger.ts';
 import { channels } from './channels/index.ts';
@@ -21,12 +19,7 @@ export function requestShutdown() {
   else log('收到停机请求，但没有注册停机处理器');
 }
 
-/**
- * 可选的父进程看护：带 `--parent-pid=<pid>` 启动时，网关在那个进程消失后退出。
- *
- * 不能反过来在 DSH 里挂退出钩子：DSH 可能被强杀，而被杀的进程不会执行任何钩子。
- * 轮询父进程是否存在才是可靠的方向。
- */
+/** 可选的父进程看护：带 `--parent-pid=<pid>` 启动时，网关在那个进程消失后退出。不能反过来在 DSH 里挂退出钩子：DSH 可能被强杀，而被杀的进程不会执行任何钩子，轮询父进程是否存在才可靠。 */
 export function startParentWatchdog(server: any) {
   const arg = process.argv.find((value) => value.startsWith('--parent-pid='));
   if (!arg) return;
@@ -47,15 +40,7 @@ export function startParentWatchdog(server: any) {
   timer.unref?.();
 }
 
-/**
- * 监听成功后的预热。
- *
- * **只读本地状态，不发网络请求**——除了通道自述的 `warmup()`（例如 Trae 要垫结算
- * 基线，那是它自己的账号接口，走它自己的错误处理）。启动时打一遍上游只会让冷启动
- * 变慢、把日志刷满，不代表网关有问题；要验活去管理台点「检测」。
- *
- * 顺便把签到调度起起来（每天到 `checkinTime` 点跑一次，失败的按阶梯重试；不是轮询）。
- */
+/** 监听成功后的预热。**只读本地状态，不发网络请求**——启动时打一遍上游只会让冷启动变慢、把日志刷满；要验活去管理台点「检测」。顺便把签到调度起起来（每天到 `checkinTime` 点跑一次，不是轮询）。 */
 export function warmupChannels() {
   for (const channel of channels) {
     const accounts = accountsOf(channel.id);

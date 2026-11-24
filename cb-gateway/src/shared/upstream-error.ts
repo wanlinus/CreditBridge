@@ -1,11 +1,6 @@
-// 通道转发失败时抛这个。
-//
-// 为什么不用裸 Error：**路由层要根据上游状态码改账号状态**——401 说明凭据坏了
-// （标 `invalid`），429 说明限流（标 `cooldown` 并带上恢复时间）。让通道自己判断
-// 「该不该改状态」等于把状态机拆成三份（每家一份），而且通道根本看不到账号文件。
-//
-// 抛错而不是返回 `{ok:false}`：通道内部到处是 `await fetch` + 解析，异常路径天然
-// 就是 throw；包成返回值要把每一层都改成判空。
+// 通道转发失败时抛这个。不用裸 Error 是因为**路由层要根据上游状态码改账号状态**——401 标 `invalid`、
+// 429 标 `cooldown` 并带恢复时间。让通道自己判断等于把状态机拆成每家一份，而且通道看不到账号。
+// 抛错而不是返回 `{ok:false}`：通道内部到处是 `await fetch` + 解析，异常路径天然就是 throw。
 
 export interface UpstreamErrorOptions {
   /** 机器可读的错误码，进 `error.code`。默认 `upstream_error`。 */
@@ -29,12 +24,7 @@ export class UpstreamError extends Error {
   }
 }
 
-/**
- * 从 `Retry-After` 响应头算恢复时间。
- *
- * 支持两种格式（RFC 9110）：秒数（`120`）和 HTTP 日期。解析不出来返回 `null`，
- * 由调用方兜底一个默认冷却时长——宁可控错一会儿，也别把一个限流中的号当成好的。
- */
+/** 从 `Retry-After` 响应头算恢复时间，支持秒数和 HTTP 日期两种格式（RFC 9110）。解析不出来返回 `null`，由调用方兜底默认冷却时长。 */
 export function retryAfterAt(header: string | null | undefined, now = Date.now()): number | null {
   const text = String(header ?? '').trim();
   if (text === '') return null;
