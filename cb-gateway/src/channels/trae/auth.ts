@@ -7,7 +7,13 @@ import crypto from 'node:crypto';
 import type { IdentityPatch, TraeCredential } from '../../types.ts';
 import { credentialExpired, credentialUnavailable } from '../../shared/credential-error.ts';
 
-const DEFAULT_REFRESH_BASE = 'https://api.trae.cn';
+/** 所有出站请求的超时。上游挂起时无限等待会让整个通道卡死，必须每个 fetch 都带。 */
+export const TRAE_TIMEOUT_MS = 20_000;
+
+/** 账号 / 签到 / 额度 / 刷新令牌：同一个 host。 */
+export const TRAE_ACCOUNT_BASE = 'https://api.trae.cn';
+/** 登录授权页的 host。 */
+export const TRAE_CONSOLE_BASE = 'https://www.trae.cn';
 const EXCHANGE_PATH = '/cloudide/api/v3/trae/oauth/ExchangeToken';
 const IDE_VERSION = '3.3.104';
 const IDE_VERSION_CODE = '20260929';
@@ -38,7 +44,7 @@ const VERSION_URL = 'https://api.trae.cn/icube/api/v1/native/version/trae/cn/lat
  * 不是 `appVersion`），自动改它没有依据。
  */
 export async function fetchTraeIdentity(): Promise<IdentityPatch> {
-  const response = await fetch(VERSION_URL, { signal: AbortSignal.timeout(15_000) });
+  const response = await fetch(VERSION_URL, { signal: AbortSignal.timeout(TRAE_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`版本接口 HTTP ${response.status}`);
   const body = (await response.json()) as any;
   const win32 = body?.data?.manifest?.win32;
@@ -82,7 +88,7 @@ export function normalizeCredential(auth: any) {
     userId: typeof auth.userId === 'string' ? auth.userId : '',
     username: accountName || (typeof auth.username === 'string' ? auth.username : ''),
     // 刷新走账号 host，对话走专门的 API host。两者分开存，别混。
-    refreshBase: pickBase(auth.host) || pickBase(auth.refreshBase) || DEFAULT_REFRESH_BASE,
+    refreshBase: pickBase(auth.host) || pickBase(auth.refreshBase) || TRAE_ACCOUNT_BASE,
     expiresAt: firstEpoch(auth.expiredAt, auth.expiresAt),
     refreshExpiresAt: firstEpoch(auth.refreshExpiredAt, auth.refreshExpiresAt),
     machineId: typeof auth.machineId === 'string' ? auth.machineId : '',
@@ -203,7 +209,7 @@ function deviceInfo(credential: any, key: { publicKeyPEM: string }) {
 export async function refreshTraeCredential(credential: TraeCredential): Promise<TraeCredential> {
   if (!credential.refreshToken) throw credentialExpired('没有可用的 Trae refreshToken，请重新登录');
   const key = deviceKeyOf(credential);
-  const base = credential.refreshBase || DEFAULT_REFRESH_BASE;
+  const base = credential.refreshBase || TRAE_ACCOUNT_BASE;
   let response;
   try {
     response = await fetch(`${base}${EXCHANGE_PATH}`, {
@@ -222,7 +228,7 @@ export async function refreshTraeCredential(credential: TraeCredential): Promise
         DeviceProof: deviceProof(credential.refreshToken, key),
         IDEVersion: TRAE_CLIENT_VERSION,
       }),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(TRAE_TIMEOUT_MS),
     });
   } catch (error: any) {
     throw credentialUnavailable(`Trae 刷新令牌请求失败：${error.message}`);

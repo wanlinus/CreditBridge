@@ -6,7 +6,7 @@
 import type { Account, CatalogModel, ModelInfo } from '../../types.ts';
 import { contextOptions } from '../../shared/model-settings.ts';
 import { usableCredential } from '../../core/accounts.ts';
-import { LOOMY_API_BASE, loomyApiHeaders, refreshLoomyCredential } from './auth.ts';
+import { LOOMY_API_BASE, LOOMY_TIMEOUT_MS, loomyApiHeaders, refreshLoomyCredential } from './auth.ts';
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 const cache = new Map<string, { at: number; models: RawModel[] }>();
@@ -67,7 +67,7 @@ export async function fetchLoomyModels(account: Account): Promise<RawModel[]> {
   const credential = await usableCredential(account, refreshLoomyCredential);
   const response = await fetch(`${LOOMY_API_BASE}/models`, {
     headers: loomyApiHeaders(credential.session),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(LOOMY_TIMEOUT_MS),
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`Loomy /models HTTP ${response.status}: ${text.slice(0, 200)}`);

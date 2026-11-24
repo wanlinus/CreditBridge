@@ -5,7 +5,7 @@
 
 import type { Account, CatalogModel, ModelInfo } from '../../types.ts';
 import { contextOptions } from '../../shared/model-settings.ts';
-import { TRAE_CHAT_BASE, traeHeaders } from './auth.ts';
+import { TRAE_CHAT_BASE, TRAE_TIMEOUT_MS, traeHeaders } from './auth.ts';
 
 /** 取配置用的 function。**故意和对话请求的 `chat_v3` 不同**，原因见文件头。 */
 const CONFIG_FUNCTION = 'solo_agent';
@@ -175,7 +175,7 @@ export async function fetchTraeModelConfig(credential: any, force = false): Prom
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ functions: [CONFIG_FUNCTION] }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(TRAE_TIMEOUT_MS),
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`trae config http ${response.status}: ${text.slice(0, 160)}`);

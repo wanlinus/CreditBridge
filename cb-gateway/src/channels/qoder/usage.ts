@@ -4,9 +4,8 @@
 import type { Account, CheckinRecord, CheckinStatus, Credits } from '../../types.ts';
 import { usableCredential } from '../../core/accounts.ts';
 import { keepEarlierSuccess, readCheckinState, writeCheckinState as writeCheckinStore } from '../../core/checkin-store.ts';
-import { refreshQoderCredential, type QoderCredential } from './auth.ts';
+import { QODER_OPENAPI_BASE, QODER_TIMEOUT_MS, refreshQoderCredential, type QoderCredential } from './auth.ts';
 
-const BASE = 'https://openapi.qoder.com.cn';
 const USAGE_PATH = '/sash/api/v2/me/usage';
 const CAMPAIGNS_PATH = '/sash/api/v1/me/campaigns';
 /**
@@ -41,10 +40,10 @@ function authHeaders(credential: QoderCredential): Record<string, string> {
 async function callApi(account: Account, pathname: string, init: RequestInit = {}): Promise<any> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const credential = await usableCredential(account, refreshQoderCredential, { forceRefresh: attempt > 0 });
-    const response = await fetch(`${BASE}${pathname}`, {
+    const response = await fetch(`${QODER_OPENAPI_BASE}${pathname}`, {
       ...init,
       headers: { ...authHeaders(credential), ...(init.headers as Record<string, string> | undefined) },
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(QODER_TIMEOUT_MS),
     });
     const text = await response.text();
     if (response.status === 401 && attempt === 0) {

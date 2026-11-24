@@ -5,8 +5,11 @@
 import { credentialExpired, credentialUnavailable } from '../../shared/credential-error.ts';
 import type { IdentityPatch } from '../../types.ts';
 
-const CN_CHAT_BASE = 'https://copilot.tencent.com';
-const CN_BILLING_BASE = 'https://www.codebuddy.cn';
+/** 所有出站请求的超时。上游挂起时无限等待会让整个通道卡死，必须每个 fetch 都带。 */
+export const WORKBUDDY_TIMEOUT_MS = 20_000;
+
+export const WORKBUDDY_CHAT_BASE = 'https://copilot.tencent.com';
+export const WORKBUDDY_BILLING_BASE = 'https://www.codebuddy.cn';
 /** 账号与登录接口都挂在 `/v2/plugin` 下（product.json 的 authentication.attributes.prefixPath）。 */
 const PREFIX_PATH = '/plugin';
 
@@ -36,7 +39,7 @@ const VERSION_URL = 'https://download.codebuddy.cn/workbuddy/saas/version.json';
  * 第四段是构建号（`channelVersion`）。
  */
 export async function fetchWorkBuddyIdentity(): Promise<IdentityPatch> {
-  const response = await fetch(VERSION_URL, { signal: AbortSignal.timeout(20_000) });
+  const response = await fetch(VERSION_URL, { signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`版本接口 HTTP ${response.status}`);
   const body = (await response.json()) as any;
   const raw = body?.['win32-x64-system']?.stable?.version;
@@ -84,18 +87,18 @@ export async function refreshWorkBuddyCredential(credential: any) {
   }
   let response;
   try {
-    response = await fetch(`${CN_CHAT_BASE}/v2${PREFIX_PATH}/auth/token/refresh`, {
+    response = await fetch(`${WORKBUDDY_CHAT_BASE}/v2${PREFIX_PATH}/auth/token/refresh`, {
       method: 'POST',
       headers: {
         Accept: 'application/json, text/plain, */*',
         'X-Requested-With': 'XMLHttpRequest',
-        Origin: CN_BILLING_BASE,
-        Referer: `${CN_BILLING_BASE}/`,
+        Origin: WORKBUDDY_BILLING_BASE,
+        Referer: `${WORKBUDDY_BILLING_BASE}/`,
         'User-Agent': cliUserAgent(),
         'X-Refresh-Token': credential.refreshToken,
         'X-Auth-Refresh-Source': 'workbuddy',
       },
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS),
     });
   } catch (error: any) {
     // 连接超时/断网：重试有意义。
@@ -142,7 +145,7 @@ export async function revokeWorkBuddySession(credential: any) {
   const refreshToken = credential && typeof credential.refreshToken === 'string' ? credential.refreshToken : '';
   if (!refreshToken) return false;
   try {
-    const response = await fetch(`${CN_CHAT_BASE}/v2${PREFIX_PATH}/auth/logout`, {
+    const response = await fetch(`${WORKBUDDY_CHAT_BASE}/v2${PREFIX_PATH}/auth/logout`, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
@@ -154,7 +157,7 @@ export async function revokeWorkBuddySession(credential: any) {
         'User-Agent': workBuddyUserAgent(),
       },
       body: '{}',
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS),
     });
     log(`server logout -> ${response.status}`);
     return response.ok;

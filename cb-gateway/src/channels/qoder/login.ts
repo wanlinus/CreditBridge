@@ -2,6 +2,7 @@
 // 反直觉：拿到的 `dt-` 一次授权解决全部需求——`/sash/*` 直接打，对话则用它现算 COSY 签名输入；
 // 「`dt-` 喂 CLI 被 `access_token_invalid` 拒」只适用于 CLI 的 accessToken 模式，与签名无关。
 
+import { QODER_OPENAPI_BASE, QODER_TIMEOUT_MS, QODER_WEB_BASE } from './auth.ts';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,8 +14,6 @@ import { deriveRuntimeFields } from './cosy/index.ts';
 import type { QoderCredential } from './auth.ts';
 
 // 授权/轮询的固定端点。CN 版：web 域名 qoder.cn、api 域名 qoder.com.cn。
-const WEB_BASE = 'https://qoder.cn';
-const OPENAPI_BASE = 'https://openapi.qoder.com.cn';
 const AUTH_PATH = '/device/selectAccounts';
 const POLL_PATH = '/api/v1/deviceToken/poll';
 
@@ -93,7 +92,7 @@ export function buildAuthorizeUrl(input: { challenge: string; nonce: string; mac
   if (input.machineToken && input.machineToken.trim() !== '') {
     params.set('machine_token', input.machineToken);
   }
-  return `${WEB_BASE}${AUTH_PATH}?${params.toString()}`;
+  return `${QODER_WEB_BASE}${AUTH_PATH}?${params.toString()}`;
 }
 
 /** 拼轮询 URL。只带 nonce + verifier + challenge_method。 */
@@ -103,7 +102,7 @@ export function buildPollUrl(input: { nonce: string; verifier: string }): string
     verifier: input.verifier,
     challenge_method: 'S256',
   });
-  return `${OPENAPI_BASE}${POLL_PATH}?${params.toString()}`;
+  return `${QODER_OPENAPI_BASE}${POLL_PATH}?${params.toString()}`;
 }
 
 export interface DeviceFlowResult {
@@ -227,10 +226,10 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * **失败不抛错**：昵称只用于展示，不值得为它把一次成功的登录搞失败。 */
 export async function fetchUserInfo(token: string): Promise<{ userId: string; username: string } | null> {
   try {
-    const response = await fetch(`${OPENAPI_BASE}/api/v1/userinfo`, {
+    const response = await fetch(`${QODER_OPENAPI_BASE}/api/v1/userinfo`, {
       method: 'GET',
       headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(QODER_TIMEOUT_MS),
     });
     if (!response.ok) return null;
     const doc: any = await response.json();

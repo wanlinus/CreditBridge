@@ -6,7 +6,7 @@
 import type { Account, Credits } from '../../types.ts';
 import { usableCredential } from '../../core/accounts.ts';
 import { localDate } from '../../shared/clock.ts';
-import { LOOMY_POINTS_BASE, loomyApiHeaders, refreshLoomyCredential } from './auth.ts';
+import { LOOMY_POINTS_BASE, LOOMY_TIMEOUT_MS, loomyApiHeaders, refreshLoomyCredential } from './auth.ts';
 
 const RECORDS_PATH = '/api/v1/points/records';
 
@@ -25,7 +25,7 @@ export async function getLoomyCredits(account: Account): Promise<Credits> {
   const url = `${LOOMY_POINTS_BASE}${RECORDS_PATH}?pageNo=1&pageSize=100&recordType=all`;
   const response = await fetch(url, {
     headers: loomyApiHeaders(credential.session),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(LOOMY_TIMEOUT_MS),
   });
   const text = await response.text();
   let doc;

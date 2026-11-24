@@ -5,15 +5,16 @@
 import { pathToFileURL } from 'node:url';
 
 import type { LoginResult } from '../../types.ts';
-import { workBuddyUserAgent } from './auth.ts';
+import { WORKBUDDY_CHAT_BASE, WORKBUDDY_TIMEOUT_MS, workBuddyUserAgent } from './auth.ts';
 
-const API_BASE = 'https://copilot.tencent.com';
 const PREFIX_PATH = '/plugin';
 // auth/state 的 platform 参数。客户端取自 product.json 的 authentication.attributes.platform。
 const PLATFORM = 'workbuddy';
 /** 客户端写死的「还在等用户操作」返回码。 */
 const PENDING_CODE = 11217;
 const POLL_INTERVAL_MS = 1000;
+/** 单次轮询的超时。比 `WORKBUDDY_TIMEOUT_MS` 短：轮询本身应该秒回，慢就说明这次网络有问题、下次再试。 */
+const LOGIN_POLL_TIMEOUT_MS = 10_000;
 const TIMEOUT_MS = 5 * 60 * 1000;
 const DOMAIN = 'www.workbuddy.cn';
 
@@ -54,11 +55,11 @@ function sleep(ms: number, signal?: AbortSignal) {
 
 /** ① 创建登录会话，拿到 state 和给用户看的登录页地址。 */
 async function createAuthState() {
-  const response = await fetch(`${API_BASE}/v2${PREFIX_PATH}/auth/state?platform=${PLATFORM}`, {
+  const response = await fetch(`${WORKBUDDY_CHAT_BASE}/v2${PREFIX_PATH}/auth/state?platform=${PLATFORM}`, {
     method: 'POST',
     headers: loginHeaders(),
     body: '{}',
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS),
   });
   const text = await response.text();
   let doc: any;
@@ -77,7 +78,7 @@ async function createAuthState() {
 /** ③ 轮询直到用户登录完成。 */
 async function pollToken(state: string, signal?: AbortSignal) {
   const deadline = Date.now() + TIMEOUT_MS;
-  const url = `${API_BASE}/v2${PREFIX_PATH}/auth/token?state=${encodeURIComponent(state)}`;
+  const url = `${WORKBUDDY_CHAT_BASE}/v2${PREFIX_PATH}/auth/token?state=${encodeURIComponent(state)}`;
   let attempt = 0;
   while (Date.now() < deadline) {
     await sleep(POLL_INTERVAL_MS, signal);
@@ -86,7 +87,7 @@ async function pollToken(state: string, signal?: AbortSignal) {
     // /v1/logout 先 abort 再登出，否则挂起的登录会在授权完成时把凭据写回去、把刚点下的退出复活。
     if (signal?.aborted) throw new Error('登录已取消');
     try {
-      const response = await fetch(url, { headers: loginHeaders(), signal: AbortSignal.timeout(10000) });
+      const response = await fetch(url, { headers: loginHeaders(), signal: AbortSignal.timeout(LOGIN_POLL_TIMEOUT_MS) });
       const doc: any = await response.json();
       if (doc && doc.code === PENDING_CODE) {
         if (attempt % 30 === 0) console.log(`[workbuddy] 仍在等待网页登录…（${attempt}s）`);
@@ -112,9 +113,9 @@ async function pollToken(state: string, signal?: AbortSignal) {
  */
 async function fetchAccount(state: string, accessToken: string) {
   try {
-    const response = await fetch(`${API_BASE}/v2${PREFIX_PATH}/login/account?state=${encodeURIComponent(state)}`, {
+    const response = await fetch(`${WORKBUDDY_CHAT_BASE}/v2${PREFIX_PATH}/login/account?state=${encodeURIComponent(state)}`, {
       headers: loginHeaders({ Authorization: `Bearer ${accessToken}` }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS),
     });
     const doc: any = await response.json();
     const data = doc && doc.data;

@@ -31,11 +31,14 @@ export function configureLoomyIdentity(clientVersion: string): void {
 }
 
 /** 桌面端更新源（`electron-updater` 的 `latest.yml`）。 */
+/** 所有出站请求的超时。上游挂起时无限等待会让整个通道卡死，必须每个 fetch 都带。 */
+export const LOOMY_TIMEOUT_MS = 20_000;
+
 const UPDATE_FEED = 'https://static-res.xfinfr.com/loomy/win';
 
 /** 读 `latest.yml` 拿最新版本号。 */
 export async function fetchLoomyVersion(): Promise<string> {
-  const response = await fetch(`${UPDATE_FEED}/latest.yml`, { signal: AbortSignal.timeout(15_000) });
+  const response = await fetch(`${UPDATE_FEED}/latest.yml`, { signal: AbortSignal.timeout(LOOMY_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`版本文件 HTTP ${response.status}`);
   const text = await response.text();
   const match = /^version:\s*(\S+)/m.exec(text);
@@ -103,7 +106,7 @@ async function accountRequest(path: string, param: Record<string, unknown>): Pro
       method: 'POST',
       headers,
       body,
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(LOOMY_TIMEOUT_MS),
     });
   } catch (error: any) {
     throw new Error(`Loomy 账号服务网络错误（${path}）：${error.message}`);

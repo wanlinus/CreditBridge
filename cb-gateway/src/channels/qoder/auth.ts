@@ -8,6 +8,14 @@ import { loadOrCreateMachineId, loadUmidMachineToken, setQoderVersion } from './
 import { deriveRuntimeFields } from './cosy/index.ts';
 
 /** 桌面端的更新源（`resources/app-update.yml` 的 `url`，Windows 版是 `static.` 域）。 */
+/** 所有出站请求的超时。上游挂起时无限等待会让整个通道卡死，必须每个 fetch 都带。 */
+export const QODER_TIMEOUT_MS = 20_000;
+
+/** 账号 / 签到 / 额度 / 令牌刷新：同一个 host。 */
+export const QODER_OPENAPI_BASE = 'https://openapi.qoder.com.cn';
+/** 网页登录授权页。 */
+export const QODER_WEB_BASE = 'https://qoder.cn';
+
 const UPDATE_FEED = 'https://static.qoder.com.cn/qoder-app/releases';
 
 /** 启动时由通道把自述身份注入进来（`login.ts` 的 `QODER_VERSION` 是空串，靠这里填）。 */
@@ -17,7 +25,7 @@ export function configureQoderIdentity(clientVersion: string): void {
 
 /** 读 electron-updater 的 `latest.yml` 拿最新版本号。 */
 export async function fetchQoderIdentity(): Promise<IdentityPatch> {
-  const response = await fetch(`${UPDATE_FEED}/latest.yml`, { signal: AbortSignal.timeout(15_000) });
+  const response = await fetch(`${UPDATE_FEED}/latest.yml`, { signal: AbortSignal.timeout(QODER_TIMEOUT_MS) });
   if (!response.ok) throw new Error(`版本文件 HTTP ${response.status}`);
   const text = await response.text();
   const match = /^version:\s*(\S+)/m.exec(text);
@@ -82,7 +90,7 @@ export async function refreshQoderCredential(credential: QoderCredential): Promi
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'User-Agent': 'qoder/1.1.79-hotfix.19' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(QODER_TIMEOUT_MS),
     });
   } catch (error: any) {
     throw credentialUnavailable(`刷新令牌请求失败：${error.message}`);

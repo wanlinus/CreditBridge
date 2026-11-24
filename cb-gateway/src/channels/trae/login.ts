@@ -13,10 +13,10 @@ import { pathToFileURL } from 'node:url';
 import type { LoginResult, TraeCredential } from '../../types.ts';
 import { STATE_DIR } from '../../shared/paths.ts';
 import { writeFileAtomic } from '../../shared/atomic-write.ts';
-import { jwtExpiry, mintSelfDeviceId, TRAE_BUILD_VERSION, TRAE_CLIENT_ID, TRAE_CLIENT_VERSION } from './auth.ts';
+import { jwtExpiry, mintSelfDeviceId, TRAE_ACCOUNT_BASE, TRAE_BUILD_VERSION, TRAE_CLIENT_ID, TRAE_CLIENT_VERSION, TRAE_CONSOLE_BASE } from './auth.ts';
 
-const CONSOLE_HOST = 'https://www.trae.cn';
-const API_HOST = 'https://api.trae.cn';
+/** 换令牌的超时。比 `TRAE_TIMEOUT_MS` 长：上游要签发一对密钥，实测比普通请求慢好几倍。 */
+const EXCHANGE_TIMEOUT_MS = 60_000;
 // 下面几个渠道串取自客户端自己的登录日志（main.log 的 `OAuthenticator# openLogin getLoginUrl`）。
 // 服务端按它们分支，填错会卡在授权页的「认证中」，所以必须和当前客户端保持一致。
 const APP_TYPE = 'stable';
@@ -160,13 +160,13 @@ function buildAuthorizeUrl({ callbackBase, challenge, identity }: { callbackBase
     code_challenge_method: 'S256',
     channel_name: CHANNEL_NAME,
   });
-  return `${CONSOLE_HOST}${AUTH_PATH}?${params.toString()}`;
+  return `${TRAE_CONSOLE_BASE}${AUTH_PATH}?${params.toString()}`;
 }
 
 /** 登录页：先确认登录态，再回跳授权页。**这才是该直接打开的那个**——授权页被直接访问时，浏览器里已有 Trae 登录态的那次会停在页面上不再跳转（第二次登录必现：回调端口收不到请求，任务空转到 5 分钟超时）。
  * 客户端自己的 `openLogin getLoginUrl` 拿到的正是这个地址。 */
 function buildLoginUrl(authorizeUrl: string): string {
-  return `${CONSOLE_HOST}/login?login_platform=trae&redirect_url=${encodeURIComponent(authorizeUrl)}`;
+  return `${TRAE_CONSOLE_BASE}/login?login_platform=trae&redirect_url=${encodeURIComponent(authorizeUrl)}`;
 }
 
 /** 回调的 query 里都可能有什么。现在的授权页把授权码包在 `authCodeInfo` 里（JSON 字符串、键名大写 `AuthCode`），早期抓包是 `authCode`/`auth_code`/`code`——只认前者会卡在「回调里没有授权码」。
@@ -262,7 +262,7 @@ async function exchangeToken({
     IDEVersion: TRAE_CLIENT_VERSION,
     // **刻意不带 DeviceProof**：官方换令牌从不带签名（只有 refresh 带），加签名只会更乱。
   };
-  const base = host || API_HOST;
+  const base = host || TRAE_ACCOUNT_BASE;
   // 打一行摘要：上游对「客户端够不够新 / 设备认不认得」的判断全看这几个字段，出问题时光看
   // 错误码猜不到（20405 说的是签名，实际是版本或 DeviceID）。只打非敏感字段。
   console.log(
@@ -274,7 +274,7 @@ async function exchangeToken({
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-cloudide-token': '' },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(EXCHANGE_TIMEOUT_MS),
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`换令牌 HTTP ${response.status} (${base}): ${text.slice(0, 400)}`);
@@ -317,7 +317,7 @@ function save({ result, keyPair, identity, userHint }: {
     username: typeof result.UserName === 'string' ? result.UserName : userHint.username,
     // 这里**不**用回调给的 host：那个是「换令牌」的域，而后续 refresh 走的是桌面客户端那套
     // （api.trae.cn + /cloudide/api/v3/trae/oauth/ExchangeToken）。混用会让第一次 token 过期后就再也刷新不回来。
-    refreshBase: API_HOST,
+    refreshBase: TRAE_ACCOUNT_BASE,
     expiresAt: epoch(result.TokenExpireAt) || epoch(result.ExpireAt) || jwtExpiry(result.Token) || Date.now() + 14 * 24 * 3600 * 1000,
     refreshExpiresAt: epoch(result.RefreshExpireAt) || Date.now() + 180 * 24 * 3600 * 1000,
     machineId: identity.machineId,

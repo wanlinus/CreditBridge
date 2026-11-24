@@ -6,9 +6,8 @@ import type { Account, CheckinRecord, CheckinStatus, Credits } from '../../types
 import { localDate } from '../../shared/clock.ts';
 import { updateAccount, usableCredential } from '../../core/accounts.ts';
 import { keepEarlierSuccess, readCheckinState, writeCheckinState } from '../../core/checkin-store.ts';
-import { effectiveDeviceId, mintSelfDeviceId, refreshTraeCredential, TRAE_APP_VERSION } from './auth.ts';
+import { effectiveDeviceId, mintSelfDeviceId, refreshTraeCredential, TRAE_ACCOUNT_BASE, TRAE_APP_VERSION, TRAE_TIMEOUT_MS } from './auth.ts';
 
-const ACCOUNT_BASE = 'https://api.trae.cn';
 const USAGE_PATH = '/trae/api/v2/pay/ide_user_ent_usage';
 const CHECKIN_STATUS_PATH = '/trae/api/v2/ug/checkin_credits/status';
 const CHECKIN_CLAIM_PATH = '/trae/api/v2/ug/checkin_credits/claim';
@@ -28,7 +27,7 @@ async function postAccount(account: Account, pathname: any, body: any) {
   // 账号类接口（尤其 claim）按 `x-device-id` 认设备。**不能为空**：实测空串打 claim 回 9004，
   // 非空（哪怕 `1`、`abc`）都放行。也别拿 `machineId`（遥测号）顶——它不是账号接口认的身份。
   const deviceId = effectiveDeviceId(credential);
-  const response = await fetch(`${ACCOUNT_BASE}${pathname}`, {
+  const response = await fetch(`${TRAE_ACCOUNT_BASE}${pathname}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -41,7 +40,7 @@ async function postAccount(account: Account, pathname: any, body: any) {
       'x-os-version': 'Windows 10',
     },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(TRAE_TIMEOUT_MS),
   });
   const text = await response.text();
   let doc;

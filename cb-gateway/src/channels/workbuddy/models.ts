@@ -4,7 +4,7 @@
 
 import type { Account, CatalogModel, ModelInfo } from '../../types.ts';
 import { usableCredential } from '../../core/accounts.ts';
-import { refreshWorkBuddyCredential, workBuddyUserAgent } from './auth.ts';
+import { refreshWorkBuddyCredential, WORKBUDDY_TIMEOUT_MS, workBuddyUserAgent } from './auth.ts';
 
 const CONFIG_URL = 'https://copilot.tencent.com/v3/config';
 const CATALOG_TTL_MS = 10 * 60 * 1000;
@@ -96,7 +96,7 @@ export async function fetchWorkBuddyCatalog(account: Account, force = false): Pr
   if (!force && cached && cached.models.length > 0 && Date.now() - cached.at < CATALOG_TTL_MS) return cached.models;
   // 取目录也要用新鲜凭据：放了一夜没动的号，token 早过期了。
   const credential = await usableCredential(account, refreshWorkBuddyCredential);
-  const response = await fetch(CONFIG_URL, { headers: catalogHeaders(credential), signal: AbortSignal.timeout(30000) });
+  const response = await fetch(CONFIG_URL, { headers: catalogHeaders(credential), signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS) });
   const text = await response.text();
   if (!response.ok) throw new Error(`catalog http ${response.status}: ${text.slice(0, 200)}`);
   const doc = JSON.parse(text);

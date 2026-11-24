@@ -5,11 +5,10 @@ import type { Account, CheckinRecord, Credits } from '../../types.ts';
 import { localDate } from '../../shared/clock.ts';
 import { usableCredential } from '../../core/accounts.ts';
 import { keepEarlierSuccess, readCheckinState, writeCheckinState } from '../../core/checkin-store.ts';
-import { refreshWorkBuddyCredential } from './auth.ts';
+import { refreshWorkBuddyCredential, WORKBUDDY_BILLING_BASE, WORKBUDDY_TIMEOUT_MS } from './auth.ts';
 
-const BILLING_BASE = 'https://www.codebuddy.cn';
-const BILLING_URL = `${BILLING_BASE}/v2/billing/meter/get-user-resource`;
-const CHECKIN_URL = `${BILLING_BASE}/v2/billing/meter/daily-checkin`;
+const BILLING_URL = `${WORKBUDDY_BILLING_BASE}/v2/billing/meter/get-user-resource`;
+const CHECKIN_URL = `${WORKBUDDY_BILLING_BASE}/v2/billing/meter/daily-checkin`;
 
 let logSink: any = null;
 export function setWorkBuddyUsageLogger(fn: any) {
@@ -58,7 +57,7 @@ export async function getWorkBuddyUsage(account: Account): Promise<Credits> {
       PackageEndTimeRangeBegin: fmt(now),
       PackageEndTimeRangeEnd: fmt(new Date(now.getTime() + 3185136000)),
     }),
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS),
   });
   const text = await response.text();
   let doc: any;
@@ -118,7 +117,7 @@ export async function claimCheckin(account: Account): Promise<CheckinRecord> {
       method: 'POST',
       headers: billingHeaders(credential),
       body: '{}',
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(WORKBUDDY_TIMEOUT_MS),
     });
     const text = await response.text();
     let doc;
