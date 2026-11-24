@@ -4,7 +4,7 @@
 // `prompt + completion` 里有一个是 NULL 就整行算成 0；`GROUP BY` 忘了归一空值，
 // 堆叠图就少一段。这里逐条钉住这些「不报错但错」的地方。
 //
-// 另一个重点是**空值的语义**：上游没报的字段存 NULL，不当 0 存（`private/docs/v4` §3.1）。
+// 另一个重点是**空值的语义**：上游没报的字段存 NULL，不当 0 存（`private/docs/architecture-decisions.md` §3.1）。
 // 但聚合时必须按 0 参与相加——这两件事不矛盾，一个是存储，一个是统计口径。
 //
 // 跑：node test/store-usage.mjs

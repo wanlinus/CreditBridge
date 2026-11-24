@@ -53,7 +53,7 @@ const EXCLUDE_FILES = [
 const EXCLUDE_DIRS = [
   'docs',
   'tools/qoder-probe',
-  // 加固盾探针：逆向侧工具，判据写在 private/docs/reverse-engineering/09 里（而 docs 不进 pub），
+  // 加固盾探针：逆向侧工具，判据写在 private/docs/recon/reverse-engineering/09-加固盾识别与绕过.md 里（而 docs 不进 pub），
   // 对开源读者也没有使用场景——他们不是在被加固的产物里找协议。
   'tools/anti-re-probe',
   // 抓包工具：整套流程依赖 private/docs/mitm-guide.md 的说明（而 docs 不进 pub），

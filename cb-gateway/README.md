@@ -9,7 +9,7 @@
 | `qoder` | `qd` | Qoder | `openapi.qoder.com.cn`（额度/签到）+ COSY 签名的 HTTP SSE（对话） | 上游 `/algo/api/v2/model/list` |
 | `loomy` | `lo` | Loomy | `loomyad.xunfei.cn` | 上游 `/api/v1/models` |
 
-内部结构与不变量见 [`ARCHITECTURE.md`](ARCHITECTURE.md)，每条路径的请求/响应形状见 [`API.md`](API.md)，v2 重构的取舍见 [`../private/docs/v2/README.md`](../private/docs/v2/README.md)。
+内部结构与不变量见 [`ARCHITECTURE.md`](ARCHITECTURE.md)，每条路径的请求/响应形状见 [`API.md`](API.md)，v2 重构的取舍见 [`../private/docs/architecture-decisions.md`](../private/docs/architecture-decisions.md)。
 
 ---
 

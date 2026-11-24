@@ -12,7 +12,7 @@ export interface CreditSnapshot {
   /** `null` 表示**该通道不提供**这个数，和「确实用了 0」不是一回事，界面要显示 `—`。 */
   used: number | null;
   limit: number | null;
-  /** 上一次真实读取的剩余值。**是两次快照的差，不是逐请求结算**（见 private/docs/v3）。 */
+  /** 上一次真实读取的剩余值。**是两次快照的差，不是逐请求结算**（见 private/docs/architecture-decisions.md）。 */
   prevRemain: number | null;
   prevAt: number | null;
   /** 缓存命中时是那次真实读取的时间，不是请求时间。 */

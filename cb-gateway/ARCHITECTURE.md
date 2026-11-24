@@ -144,7 +144,7 @@ Loomy 没有签到（上游没这接口），其余三个都有。
 | `src/core/channel-info.ts` | **通道能力位与「取哪个号当样本」的唯一实现**。`capabilitiesOf()` 收口三个响应里重复的 `typeof channel.x === 'function'`（加第五个能力位时漏一处就是「那个按钮永远不显示」）；`primaryAccountOf()` 收口「优先 ready、其次第一个、都没有是 null」的取号规则（`/api/models/catalog` 与 `POST /api/models/settings` 共用）。 |
 | `src/ledger.ts` | 账本：一行一次请求，聚合出 `totals` / `today` / `daily` / `byModel` / `byAccount` / `todayByAccount` / `recent`。**只写 `usage_record` 表、也只从它读**（`store/usage.ts`）。三段职责靠分节注释区分：写入口 `recordChatUsage`、汇总 `usageSummary`、单日 `usageHourly`，以及两条读路径共用的 `pricingRows`。2026-11-22 曾拆成 4 个文件，随后合回来（`record.ts` 只剩 35 行代码、`pricing.ts` 30 行）。 |
 | `src/shared/db.ts` | **唯一的 SQLite 连接**：`node:sqlite` 的 `DatabaseSync`、三个 PRAGMA（WAL / synchronous / foreign_keys）、按 `user_version` 迁移（**当前版本 3**：v1 = 9 张表，v2 = `api_key` 去掉明文 `secret` 列并重建表，v3 = `account.checkin_enabled` 列）。不开连接池、不导出 `query()` 泛型助手、不封装 `transaction()`。`closeDb()` 只给测试用（Windows 上删不掉打开的文件）。 |
-| `src/store/usage.ts` | `usage_record` 的**全部 SQL**（`SQL 只允许出现在本文件与 db.ts`）。导出语义化函数——`usageTotals` / `usageStatusCounts` / `usageDailyGroups` / `usageModelGroups` / `usageAccountGroups` / `usageAccountTokens` / `usageAccountToday` / `usageRecent` / `usagePricingRows` / `usageDurations`——返回 camelCase 领域对象而不是 row，且**全同步**。不做 Repository 模式的理由见 `private/docs/v4/README.md` §5.1。**两个窄查询（`usageAccountTokens` / `usageAccountToday`）不是宽查询的重复**：它们只取调用方真正要的两三个数字，替掉了两处「为一个徽标跑完整 `usageSummary()`」的浪费（徽标 4.85ms → 0.047ms），口径一致性由 `test:store-usage` 第 10 节钉住。 |
+| `src/store/usage.ts` | `usage_record` 的**全部 SQL**（`SQL 只允许出现在本文件与 db.ts`）。导出语义化函数——`usageTotals` / `usageStatusCounts` / `usageDailyGroups` / `usageModelGroups` / `usageAccountGroups` / `usageAccountTokens` / `usageAccountToday` / `usageRecent` / `usagePricingRows` / `usageDurations`——返回 camelCase 领域对象而不是 row，且**全同步**。不做 Repository 模式的理由见 `private/docs/architecture-decisions.md（ADR-5/ADR-6）` §5.1。**两个窄查询（`usageAccountTokens` / `usageAccountToday`）不是宽查询的重复**：它们只取调用方真正要的两三个数字，替掉了两处「为一个徽标跑完整 `usageSummary()`」的浪费（徽标 4.85ms → 0.047ms），口径一致性由 `test:store-usage` 第 10 节钉住。 |
 
 ### 界面
 
@@ -310,7 +310,7 @@ type ChatOutcome =
                    **不阻塞响应**：先把流关掉/把 JSON 发出去，再等用量（最多 20 秒兜底）。
                    用量（token）是**上游在响应里报的**，网关只记账、不自己数。
                    2026-11-13 起不再为积分做逐请求结算（Trae 那套请求前后做差已删），
-                   积分改为只读官方余额——见 `private/docs/v3/overview-redesign.md`
+                   积分改为只读官方余额——见 `private/docs/architecture-decisions.md（ADR-8/ADR-9）`
 9. 失败            UpstreamError 的 status 决定账号状态：401 → invalid，429 → cooldown
                    （带 Retry-After），其余不动。**不换号**
 ```
@@ -524,7 +524,7 @@ channels[]               accountsOf(channel)          channel.modelsOf(account) 
 - 校验先用前缀筛候选，命中后常量时间比对明文；老记录（升级前建的、只有 `salt`+`hash`）回落到 scrypt。两条路径并存是为了升级后老 key 继续可用。
 - 验证通过的 secret 在内存里缓存 5 分钟，避免每个请求都重新比对。
 - 停用立刻生效（停用时清缓存），删除不可撤销，两者都在 `/keys` 页上操作。
-- `accountScope` 字段留着不实现（「这把 key 只能用 wb-1」，见 private/docs/v2 §14 未决 6）。
+- `accountScope` 字段留着不实现（「这把 key 只能用 wb-1」，见 private/docs/architecture-decisions.md §14 未决 6）。
 - **取舍**：`api_key` 表泄露即等同 key 泄露。但整个 `data/` 目录已 gitignore、Windows 上由 `data-permissions.ts` 收紧 ACL，而且上游凭据（`account.credential`）同样是明文——没有突破这个目录既有的安全边界。
 
 ### 旧 token 和 Basic 都已删除

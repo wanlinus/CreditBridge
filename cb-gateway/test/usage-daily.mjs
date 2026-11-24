@@ -6,7 +6,7 @@
 //
 // **2026-11-13 起主口径是 token**：桶里带 `tokens`（= 输入 + 输出），`credits` 退成
 // 「上游顺带报了」的附属信息。断言因此以 token 为准——它是唯一能跨通道相加的量
-// （见 private/docs/v3/overview-redesign.md）。
+// （见 private/docs/architecture-decisions.md（ADR-8/ADR-9））。
 //
 // 跑：node test/usage-daily.mjs
 import fs from 'node:fs';

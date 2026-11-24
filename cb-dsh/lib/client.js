@@ -168,7 +168,7 @@ window.__ModuleLoader__.load({
     /**
      * 网关凭据：**只有 API key 一种**。
      *
-     * v2 E 阶段把 Basic 认证删了（见 cb-gateway/private/docs/v2 §5）。用户名密码只用于**人**
+     * v2 E 阶段把 Basic 认证删了（见 cb-gateway/private/docs/architecture-decisions.md §5）。用户名密码只用于**人**
      * 登录网关网页；程序——包括这个面板——一律用 `/keys` 页发的 `sk-…` key。
      * 分成两类是因为生命周期不同：改密码不该让面板掉线，吊销 key 也不该让人退出登录。
      *

@@ -177,7 +177,7 @@ export function formatCny(value: number): string {
 
 // ---------------------------------------------------------------- 缓存推算
 
-/** 哪些通道**不报**缓存明细：它们的缓存量按「其他通道的实测平均」推算而不是 0。目前只有 Trae——抓它自己客户端 25K 上下文连发两次、读和写都是 0，是数据缺口不是事实（`private/docs/trae-recon.md` §18）。 */
+/** 哪些通道**不报**缓存明细：它们的缓存量按「其他通道的实测平均」推算而不是 0。目前只有 Trae——抓它自己客户端 25K 上下文连发两次、读和写都是 0，是数据缺口不是事实（`private/docs/protocols/trae.md` §18）。 */
 export const CACHE_ESTIMATED_PROVIDERS: readonly string[] = ['trae'];
 
 /** 窗口里没有任何可对比的实测数据时的兜底比例（2026-11-13 用户定的原值）。 */

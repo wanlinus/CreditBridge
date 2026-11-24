@@ -37,13 +37,14 @@
 
 | 文件 | 什么时候读 |
 |---|---|
-| `private/docs/adding-a-channel.md` | 新增通道 |
-| `private/docs/v2/README.md` | 动架构（账号池、多 key、模型 id 的由来） |
-| `private/docs/v3/overview-redesign.md` | 改概览页 / 用量统计 / 费用折算 |
-| `private/docs/v4/README.md` | 动 `data/` 落盘、加持久化模块 |
-| `private/docs/*-recon.md` | 改对应通道的协议、核对上游数值 |
+| `private/docs/architecture-decisions.md` | 动架构之前。11 条 ADR，每条都写了理由和否掉的方案 |
+| `private/docs/protocols/<通道>.md` | 改某个通道的协议、核对上游字段映射 |
+| `private/docs/mitm-guide.md` | 要重新抓包时 |
+| `private/docs/recon/` | 查「某个结论当初是怎么得出的」。**历史记录**，按当时的事实读 |
 
-`private/docs/qoder-*.md` 是**历史事实记录**，按当时的事实读，不要按新架构「修正」里面的结论；勘误只加在 `qoder-open-questions.md` 末尾。
+`private/docs/recon/` 里是**历史事实记录**，按当时的写法读，不要按新架构「修正」里面的结论——
+它记的是「当时怎么得出这个结论的」，不是「现在应该怎么做」。当前有效的协议事实在
+`private/docs/protocols/`。
 
 写文档的三条硬要求：路径 / 命令 / 配置键在代码里出现，就必须在这套文档里对得上；同一个事实只写一处，别处引用；不要写「旧路径搬到新路径」的迁移说明（见「数据不做迁移」）。
 
