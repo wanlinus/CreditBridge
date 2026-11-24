@@ -369,7 +369,7 @@ docker run -d -p 7801:7801 -v cb-data:/app/data ghcr.io/wanlinus/creditbridge:la
 | DSH 里模型列表是旧的 / 空的 | 模型清单由插件的 host 半边同步写入 profile。看 `~/.dsh/cb-dsh/plugin-host.log`，或 `curl.exe 127.0.0.1:7802/model-sync` 看上次结果 |
 | 面板一片空白、控制台 `Unexpected token '<'` | 静态资源被 SPA fallback 接走了（回的是 HTML）。查 `web/dist/assets` 是否存在、`app.ts` 里 `serveStatic` 的 `root` 对不对 |
 | 容器一直 **unhealthy** | healthcheck 探 `/login`，正常一定 200；`/api/health` 在闸后回 401，不能拿它做检查。起不来多半是 `data/config.json` 的 `host` 不是 `0.0.0.0`，或 `data/` 卷权限不对（容器以 uid 1000 的 `node` 写） |
-| 改了源码但容器里没变化 | 服务器上**没有源码**，`docker compose build` 在那儿跑不了（没有构建上下文）。改代码后要在开发机重跑 `.\cb-gateway\scripts\deploy.ps1` |
+| 改了源码但容器里没变化 | 镜像没更新。等 CI 构建完，然后 `docker compose pull && docker compose up -d`。服务器上**没有源码**，`docker compose build` 在那儿跑不了 |
 | 上游 `400 code 11128` | WorkBuddy 风控短语。看日志里的上游原文，把新短语加进 `src/channels/workbuddy/upstream.ts` 的 `CHANNEL_PHRASE_REWRITES`，重启网关 |
 | Qoder 对话 502 | 先看日志里的上游原文。额度/签到走 `/sash/*`（`dt-` 令牌），对话走 COSY 签名的 HTTP SSE——两套都用同一份凭据，不需要 CLI。若报「凭据里缺少对话签名信息」，那是登录时 wasm 现算失败，重新登录一次即可 |
 | 签到报 `code 9074 当前参与用户太多` | 上游活动侧瞬时爆满，**不是**凭据/设备号/版本号的问题，也不是我们这边能修的。调度器对这类错误按 10/30/60 分钟阶梯重试；客户端自己也重试不了（`checkin_claim` 的 `retry` 固定 0）。实测同一账号同一设备号隔 40 分钟就能领成。 |

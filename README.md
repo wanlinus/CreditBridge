@@ -191,17 +191,28 @@ docker compose up -d
 
 `18801` 是 Trae 登录的回调端口，见「已知限制」。
 
-### 自己构建镜像
+### 升级
 
-仓库带了 `.github/workflows/ci.yml`，推到 `master` 会自动构建并推 GHCR。
-要本地构建（改代码后想立刻试）：
+```bash
+# 在服务器上
+cd ~/docker/cb-gateway
+docker compose pull && docker compose up -d
+```
+
+镜像由 GitHub Actions 在推 `master` 时自动构建并推到 GHCR（`.github/workflows/ci.yml`），
+所以升级就是拉最新的。
+
+要固定版本就把 compose 里的 `:latest` 换成具体 tag（`v1.2.3`）或 digest。
+
+**从开发机一键部署**：
 
 ```powershell
 .\cb-gateway\scripts\deploy.ps1 -Server <服务器地址>
+.\cb-gateway\scripts\deploy.ps1 -Server <服务器地址> -Tag v1.2.3   # 固定版本
 ```
 
-脚本：`docker build` → `save` + gzip → scp → 服务器上 `load` + `compose up -d`。
-服务器上**不能** `docker compose build`（没有构建上下文）。
+脚本做的事：ssh 过去 → 改 compose 里的 image tag → `docker compose pull` →
+`up -d --force-recreate` → 等 healthy。**不碰 `data/`**。
 
 两个容器相关的坑：
 
@@ -222,7 +233,7 @@ docker compose up -d
 | `429 账号 wb-1 限流中` | 上游按模型限流，状态机自动冷却、到点恢复。急用就换一个号的模型 |
 | `503 账号 wb-1 的凭据已失效` | 上游回 401。去 `/accounts` 点「重新登录」 |
 | 容器一直 unhealthy | `host` 不是 `0.0.0.0`，或 `data/` 卷权限不对（容器以 uid 1000 写） |
-| 改了源码没生效 | `docker compose up -d` 不重建镜像，要重新 `deploy.ps1` |
+| 改了源码没生效 | 镜像没更新。等 CI 构建完，然后 `docker compose pull && docker compose up -d` |
 
 DSH 插件相关的问题见 [cb-dsh/README.md](cb-dsh/README.md)。
 
@@ -259,7 +270,7 @@ CreditBridge/
 │  │  ├─ auth/                   认证闸 + 强制改密闸
 │  │  └─ shared/                 paths · sse · 定价 · 可见性 · 网关凭据
 │  ├─ web/                      前端 SPA（Vue 3 + Vite）
-│  ├─ scripts/deploy.ps1        构建镜像 → 传服务器 → 重启
+│  ├─ scripts/deploy.ps1        拉 GHCR 镜像 → 重建容器
 │  ├─ test/                     14 套，`npm test` 全跑
 │  └─ data/                     凭据、账号、签到、用量、日志（**明文 token，勿提交**）
 ├─ cb-dsh/                      DSH 插件（host 半边 + client 半边）
