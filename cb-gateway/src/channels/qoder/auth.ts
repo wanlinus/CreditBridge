@@ -3,8 +3,28 @@
 // （`access_token_invalid`），但那是 CLI 自己的校验，和 COSY 签名是两条路。
 
 import { credentialExpired, credentialUnavailable } from '../../shared/credential-error.ts';
-import { loadOrCreateMachineId, loadUmidMachineToken } from './login.ts';
+import type { IdentityPatch } from '../../types.ts';
+import { loadOrCreateMachineId, loadUmidMachineToken, setQoderVersion } from './login.ts';
 import { deriveRuntimeFields } from './cosy/index.ts';
+
+/** 桌面端的更新源（`resources/app-update.yml` 的 `url`，Windows 版是 `static.` 域）。 */
+const UPDATE_FEED = 'https://static.qoder.com.cn/qoder-app/releases';
+
+/** 启动时由通道把自述身份注入进来（`login.ts` 的 `QODER_VERSION` 是空串，靠这里填）。 */
+export function configureQoderIdentity(clientVersion: string): void {
+  setQoderVersion(clientVersion);
+}
+
+/** 读 electron-updater 的 `latest.yml` 拿最新版本号。 */
+export async function fetchQoderIdentity(): Promise<IdentityPatch> {
+  const response = await fetch(`${UPDATE_FEED}/latest.yml`, { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`版本文件 HTTP ${response.status}`);
+  const text = await response.text();
+  const match = /^version:\s*(\S+)/m.exec(text);
+  if (!match) throw new Error('latest.yml 里没有 version 字段');
+  return { clientVersion: match[1] };
+}
+
 
 export interface QoderCredential {
   /** 会话令牌，`dt-` 开头。`/sash/*` 用它，COSY 签名也用它派生 runtime fields。 */

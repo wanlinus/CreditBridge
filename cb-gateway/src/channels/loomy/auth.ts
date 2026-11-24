@@ -22,7 +22,13 @@ const ACCESS_KEY_ID = '2thryby66wxi53sk';
 const ACCESS_KEY_SECRET = 'zsak6eadrbawz683wf5r3m2snrwj868r';
 
 /** 客户端版本：`loomy-version` 头 + 通道 identity 都用它。 */
-export const LOOMY_VERSION = '0.9.39';
+/** 桌面端 `package.json` 的 `version`。**值由通道声明**（`loomyChannel.identity.clientVersion`），经 `configureLoomyIdentity()` 注入。 */
+export let LOOMY_VERSION = '';
+
+/** 启动时由通道把自述身份注入进来。 */
+export function configureLoomyIdentity(clientVersion: string): void {
+  if (clientVersion) LOOMY_VERSION = clientVersion;
+}
 
 /** 桌面端更新源（`electron-updater` 的 `latest.yml`）。 */
 const UPDATE_FEED = 'https://static-res.xfinfr.com/loomy/win';

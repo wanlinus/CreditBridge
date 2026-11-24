@@ -4,7 +4,7 @@
 
 import type { AppConfig } from '../../types.ts';
 import { defineChannel } from '../types.ts';
-import { fetchLoomyVersion, LOOMY_VERSION, setLoomyLogger } from './auth.ts';
+import { configureLoomyIdentity, fetchLoomyVersion, setLoomyLogger } from './auth.ts';
 import { runLoomyLogin } from './login.ts';
 import { buildModelList, loomyCatalog } from './models.ts';
 import { chatLoomy, setLoomyUpstreamLogger } from './upstream.ts';
@@ -21,8 +21,9 @@ export const loomyChannel = defineChannel({
   label: 'Loomy',
 
   // 客户端身份：桌面端 package.json 的 version（`loomy-version` 头也用它）。
+  // **全项目唯一的版本值**：`auth.ts` 的 `LOOMY_VERSION` 是空串，靠 `configure()` 注入。
   identity: {
-    clientVersion: LOOMY_VERSION,
+    clientVersion: '0.9.39',
   },
 
   /** 桌面端走标准 electron-updater，`latest.yml` 里有 `version:`。 */
@@ -32,6 +33,7 @@ export const loomyChannel = defineChannel({
 
   configure({ log, config: next }) {
     config = next;
+    configureLoomyIdentity(loomyChannel.identity.clientVersion);
     setLoomyLogger(log);
     setLoomyUpstreamLogger(log);
     setLoomyUsageLogger(log);

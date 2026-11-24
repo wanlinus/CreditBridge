@@ -4,7 +4,7 @@
 
 import crypto from 'node:crypto';
 
-import type { TraeCredential } from '../../types.ts';
+import type { IdentityPatch, TraeCredential } from '../../types.ts';
 import { credentialExpired, credentialUnavailable } from '../../shared/credential-error.ts';
 
 const DEFAULT_REFRESH_BASE = 'https://api.trae.cn';
@@ -19,22 +19,25 @@ export const TRAE_CLIENT_ID = 'ono9krqynydwx5';
 export const TRAE_CHAT_BASE = 'https://trae-api-cn.mchost.guru';
 
 /**
- * 报给上游的客户端版本号。**值由通道声明**（`traeChannel.identity`），经 `configureTraeIdentity()` 传进来，
- * 这里只留默认值兜 `npm run login` 这类没走 `configure()` 的场景。`clientVersion` 写错会得到 401 `20405`。
+ * 报给上游的客户端版本号。**值由通道声明**（`traeChannel.identity`），经 `configureTraeIdentity()` 传进来。
+ * `clientVersion` 写错会得到 401 `20405`。
  */
-export let TRAE_CLIENT_VERSION = '1.107.1';
-export let TRAE_BUILD_VERSION = '2.3.106768';
+export let TRAE_CLIENT_VERSION = '';
+export let TRAE_BUILD_VERSION = '';
 /** 账号接口（签到/额度）的 `x-app-version` 头，product.json 的 `appVersion`——和 `clientVersion` 不是一个字段。 */
-export let TRAE_APP_VERSION = '3.4.24';
+export let TRAE_APP_VERSION = '';
 
 /** Trae 的更新 manifest 接口（官网 SPA 用它，匿名可访问）。 */
 const VERSION_URL = 'https://api.trae.cn/icube/api/v1/native/version/trae/cn/latest';
 
 /**
- * 查上游最新版本。返回下载 URL 和 appVersion，**构建号要从 URL 里切**——
- * manifest 里没有单独的 `tronBuildVersion` 字段，只有路径 `.../stable/2.3.106768/win32/...`。
+ * 查上游最新版本。**构建号要从下载 URL 里切**——manifest 里没有单独的
+ * `tronBuildVersion` 字段，只有路径 `.../stable/2.3.106768/win32/...`。
+ *
+ * `clientVersion` 不返回：官方包一直是 `1.107.1`（它是桌面端 `version` 字段，
+ * 不是 `appVersion`），自动改它没有依据。
  */
-export async function fetchTraeManifest(): Promise<{ downloadUrl: string; appVersion: string }> {
+export async function fetchTraeIdentity(): Promise<IdentityPatch> {
   const response = await fetch(VERSION_URL, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) throw new Error(`版本接口 HTTP ${response.status}`);
   const body = (await response.json()) as any;
@@ -43,11 +46,14 @@ export async function fetchTraeManifest(): Promise<{ downloadUrl: string; appVer
   const appVersion = win32?.versions?.[0]?.version;
   if (typeof downloadUrl !== 'string' || downloadUrl === '') throw new Error('manifest 里没有 win32 下载地址');
   if (typeof appVersion !== 'string' || appVersion === '') throw new Error('manifest 里没有 appVersion');
-  return { downloadUrl, appVersion };
+  const build = /\/stable\/([^/]+)\//.exec(downloadUrl);
+  const patch: IdentityPatch = { appVersion };
+  if (build) patch.channelVersion = build[1];
+  return patch;
 }
 
 
-/** 启动时由通道把自述身份注入进来。没调用过就沿用上面的默认值。 */
+/** 启动时由通道把自述身份注入进来。 */
 export function configureTraeIdentity(identity: { clientVersion?: string; channelVersion?: string; appVersion?: string }) {
   if (typeof identity.clientVersion === 'string' && identity.clientVersion) TRAE_CLIENT_VERSION = identity.clientVersion;
   if (typeof identity.channelVersion === 'string' && identity.channelVersion) TRAE_BUILD_VERSION = identity.channelVersion;

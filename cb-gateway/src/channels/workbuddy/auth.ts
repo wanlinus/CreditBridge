@@ -3,6 +3,7 @@
 // 坑：版本号过期**不会得到明确的错误**——上游回的那句看起来像签名问题。
 
 import { credentialExpired, credentialUnavailable } from '../../shared/credential-error.ts';
+import type { IdentityPatch } from '../../types.ts';
 
 const CN_CHAT_BASE = 'https://copilot.tencent.com';
 const CN_BILLING_BASE = 'https://www.codebuddy.cn';
@@ -20,9 +21,9 @@ function log(...args: unknown[]) {
 
 /**
  * 报给上游的客户端版本串。**不在这里写死**：版本号属于通道自述（`workbuddyChannel.identity`），
- * 启动时由 `configureWorkBuddy()` 注入；这里的默认值只兜 `npm run login -- workbuddy` 这类场景。
+ * 启动时由 `configureWorkBuddyIdentity()` 注入。`login-cli.ts` 也会走 `configure()`，所以不需要兜底值。
  */
-const versions = { clientVersion: '5.11.3', channelVersion: '43806934', ideVersion: '5.11.3' };
+const versions = { clientVersion: '', channelVersion: '', ideVersion: '' };
 
 /** 更新源（`download.codebuddy.cn/workbuddy/saas/version.json`，8 个平台 × stable/gray）。 */
 const VERSION_URL = 'https://download.codebuddy.cn/workbuddy/saas/version.json';
@@ -34,7 +35,7 @@ const VERSION_URL = 'https://download.codebuddy.cn/workbuddy/saas/version.json';
  * 版本串形如 `5.11.3.43806934-ecace0f7`：前三段是 `clientVersion`，
  * 第四段是构建号（`channelVersion`）。
  */
-export async function fetchWorkBuddyVersion(): Promise<{ clientVersion: string; channelVersion: string; ideVersion: string }> {
+export async function fetchWorkBuddyIdentity(): Promise<IdentityPatch> {
   const response = await fetch(VERSION_URL, { signal: AbortSignal.timeout(20_000) });
   if (!response.ok) throw new Error(`版本接口 HTTP ${response.status}`);
   const body = (await response.json()) as any;
@@ -51,7 +52,7 @@ export async function fetchWorkBuddyVersion(): Promise<{ clientVersion: string; 
  * 由通道在 `configure()` 里注入真实版本。**唯一的注入点**：`upstream.ts` / `models.ts` /
  * `login.ts` 都从这里取——各处自己接一个 `configure*()` 的话，加一个版本字段就要改四个文件。
  */
-export function configureWorkBuddy(identity: { clientVersion?: string; channelVersion?: string; ideVersion?: string }) {
+export function configureWorkBuddyIdentity(identity: { clientVersion?: string; channelVersion?: string; ideVersion?: string }) {
   if (typeof identity.clientVersion === 'string' && identity.clientVersion) versions.clientVersion = identity.clientVersion;
   if (typeof identity.channelVersion === 'string' && identity.channelVersion) versions.channelVersion = identity.channelVersion;
   if (typeof identity.ideVersion === 'string' && identity.ideVersion) versions.ideVersion = identity.ideVersion;

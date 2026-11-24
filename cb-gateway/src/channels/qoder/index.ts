@@ -5,7 +5,8 @@
 import type { AppConfig } from '../../types.ts';
 import { defineChannel } from '../types.ts';
 import { accountsOf } from '../../core/accounts.ts';
-import { deviceFlowLogin, fetchLatestVersion, QODER_UPDATE_FEED, QODER_VERSION } from './login.ts';
+import { deviceFlowLogin } from './login.ts';
+import { configureQoderIdentity, fetchQoderIdentity } from './auth.ts';
 import { buildModelList, getModelNames, invalidateModelCache, qoderCatalog, setModelsLogger } from './models.ts';
 import { chatQoder, setQoderModelSource, setQoderUpstreamLogger } from './upstream.ts';
 import {
@@ -40,18 +41,20 @@ export const qoderChannel = defineChannel({
   reportsTokens: true,
 
   // 报给上游的客户端版本（`cosy-version` 用同一个值），放这里让 `/health` 一眼看出报的是哪版。
+  // **全项目唯一的版本值**：`login.ts` 的 `QODER_VERSION` 是空串，靠 `configure()` 注入。
   identity: {
-    clientVersion: QODER_VERSION,
+    clientVersion: '0.5.18',
   },
 
   /** 桌面端走标准 electron-updater，`latest.yml` 里有 `version:`。 */
   async fetchIdentity() {
-    return { clientVersion: await fetchLatestVersion(QODER_UPDATE_FEED) };
+    return fetchQoderIdentity();
   },
 
   configure({ log, config: next }) {
     config = next;
     channelLog = log;
+    configureQoderIdentity(qoderChannel.identity.clientVersion);
     setModelsLogger(log);
     setQoderUpstreamLogger(log);
     setQoderUsageLogger(log);
