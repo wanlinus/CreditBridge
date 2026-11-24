@@ -4,7 +4,7 @@
 
 import type { Account, AccountProfile, AppConfig } from '../../types.ts';
 import { defineChannel } from '../types.ts';
-import { configureWorkBuddy, revokeWorkBuddySession, setLogger } from './auth.ts';
+import { configureWorkBuddy, fetchWorkBuddyVersion, revokeWorkBuddySession, setLogger } from './auth.ts';
 import { runWorkBuddyLogin } from './login.ts';
 import { buildModelList, fetchWorkBuddyCatalog, setWorkBuddyModelsLogger } from './models.ts';
 import { chatWorkBuddy, setWorkBuddyUpstreamLogger } from './upstream.ts';
@@ -32,6 +32,11 @@ export const workbuddyChannel = defineChannel({
     clientVersion: '5.9.3',
     channelVersion: '2.165.0',
     ideVersion: '5.9.3',
+  },
+
+  /** 读官方 `version.json` 的 `win32-x64-system.stable`（网关报 Windows 头）。 */
+  async fetchIdentity() {
+    return fetchWorkBuddyVersion();
   },
 
   configure({ log, config: next }) {

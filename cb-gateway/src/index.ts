@@ -7,6 +7,7 @@ import { config } from './config.ts';
 import { configureLogger, log } from './logger.ts';
 import { channels } from './channels/index.ts';
 import { loadAccounts } from './core/accounts.ts';
+import { applyCachedIdentities } from './core/channel-versions.ts';
 import { hasAnyCredential } from './core/keys.ts';
 import { createApp } from './app.ts';
 import { restrictAuthDirPermissions } from './shared/data-permissions.ts';
@@ -20,6 +21,10 @@ restrictAuthDirPermissions(log);
 
 // 账号要在通道 configure 之前加载：日志里那句「有几个号」和路由层的账号查询都依赖这份内存副本。
 loadAccounts();
+
+// 库里的版本号要在 configure 之前覆盖进 identity：configure 会把它转发给各通道模块，
+// 之后改就晚了（见 channel-versions.ts 的 applyCachedIdentities）。
+applyCachedIdentities();
 
 for (const channel of channels) {
   channel.configure?.({ log, config });

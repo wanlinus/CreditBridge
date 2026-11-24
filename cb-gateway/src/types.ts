@@ -21,10 +21,13 @@ export interface ChannelIdentity {
 }
 
 /**
- * 从上游拉到的版本号。只覆盖该通道**允许自动更新**的字段：
- * 换令牌的门禁字段（`clientVersion`）不自动改，自动改可能触发上游校验。
+ * 从上游拉到的版本号。可以包含 `identity` 的任意字段。
+ *
+ * **`clientVersion` 也允许更新**：2026-11-25 实测 Qoder 换成桌面端版本后
+ * 签到 / 模型列表 / 对话三项全通，说明上游不把它当精确门禁。
+ * 但通道实现要自己判断该改哪些——不确定的字段别返回，返回了就会覆盖。
  */
-export type IdentityPatch = Partial<Pick<ChannelIdentity, 'channelVersion' | 'ideVersion' | 'appVersion'>>;
+export type IdentityPatch = Partial<ChannelIdentity>;
 
 
 export interface TraeCredential {
@@ -212,10 +215,11 @@ export interface Channel {
   identity: ChannelIdentity;
 
   /**
-   * 去上游查最新版本号，返回**允许自动更新**的那几个字段（见 `IdentityPatch`）。
+   * 去上游查最新版本号，返回要覆盖的字段（见 `IdentityPatch`）。
    *
    * 上游升级后不让老客户端请求时，靠它把版本号跟上，不用改代码重新部署。
    * 不实现就是「这个通道没有可查的更新源」，一直用 `identity` 里的写死值。
+   * **返回什么就覆盖什么**：拿不准的字段不要返回。
    * **失败必须抛错**：路由会保留旧值并在 `/api/health` 标 `versionSource: 'cached'`，
    * 静默返回空对象会让「查失败」和「上游没给版本」分不清。
    */

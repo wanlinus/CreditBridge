@@ -10,6 +10,7 @@ import { log } from '../logger.ts';
 import { localDate } from '../shared/clock.ts';
 import { config, isValidCheckinTime } from '../config.ts';
 import { appendCheckinLog, skippedLoggedToday } from './checkin-log.ts';
+import { refreshAllVersions } from './channel-versions.ts';
 
 const RETRY_DELAY_MS = 60 * 60 * 1000;
 
@@ -187,10 +188,17 @@ export function startCheckinScheduler(): void {
     runOnce().catch((error) => log(`签到调度失败：${error.message}`));
   }
 
+  // 版本号顺手在这一轮里查：**不另开定时器**。上游客户端自己也是几小时检查一次，
+  // 跟着签到的日节奏走足够，而且少一个长期定时任务就少一处泄漏和调试面。
+  // 启动时先跑一次：新部署拿不到最新版本就没意义。
+  refreshAllVersions().catch((error) => log(`版本刷新失败：${error.message}`));
+
   const arm = () => {
     const delay = msUntilNextCheckin();
     const timer = setTimeout(() => {
       runOnce().catch((error) => log(`签到调度失败：${error.message}`));
+      // 和签到同一轮里跑，互不阻塞：版本查不到不影响签到。
+      refreshAllVersions().catch((error) => log(`版本刷新失败：${error.message}`));
       arm(); // 签完这一轮，重新算下一个点（明天的点）
     }, delay);
     timer.unref?.();

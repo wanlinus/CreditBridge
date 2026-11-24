@@ -10,6 +10,8 @@ import { config } from '../config.ts';
 import { channels, channelByPrefix, channelById } from '../channels/index.ts';
 import { accountsOf, getAccount } from '../core/accounts.ts';
 import { capabilitiesOf, primaryAccountOf } from '../core/channel-info.ts';
+import { versionSourceOf } from '../core/channel-versions.ts';
+import { lastFetchedAt } from '../store/versions.ts';
 import { iconOf, letterOf } from '../core/channel-icons.ts';
 import { keySnapshotTtl } from '../core/keys.ts';
 import { readCheckinLog } from '../core/checkin-log.ts';
@@ -71,6 +73,10 @@ adminRoutes.get('/api/health', (c) => {
       label: channel.label,
       idPrefix: channel.idPrefix,
       identity: channel.identity,
+      // 版本号是哪来的：`auto` 刚拉的 / `cached` 库里的旧值 / `default` 代码写死的。
+      // 排查「上游说客户端太旧」时先看这个——`default` 说明这个通道还没实现 `fetchIdentity`。
+      versionSource: versionSourceOf(channel.id),
+      versionFetchedAt: lastFetchedAt(channel.id),
       listed: isListed(channel.idPrefix),
       multiAccount: channel.multiAccount !== false,
       // 能力位和 `GET /api/accounts` 的 `channels[]` **同源**（`core/channel-info.ts`）：

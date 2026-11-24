@@ -23,9 +23,32 @@ const CLIENT_ID = 'e883ade2-e6e3-4d6d-adf7-f92ceff5fdcb';
 
 // 官方 CLI 的 `User-Agent: qoder/<version>`。**这是唯一的版本号来源**：`/health` 的
 // `clientVersion`、请求头的 `cosy-version`、模型列表的 `minimal_version.cli` 门禁都要跟它一致。
-export const QODER_CLI_VERSION = '0.5.17';
+/**
+ * 报给上游的客户端版本：**桌面端 `package.json` 的 `version`**，不是 CLI 版本。
+ *
+ * 2026-11-25 实测（官方 Windows exe 解包 → `package.json` 是 `0.5.17`）：
+ * 改成桌面端版本后签到、模型列表、对话（COSY 签名 + SSE）三项全通，耗时 476ms。
+ * 之前用的 `1.1.79-hotfix.19` 是 CLI 时代的遗留值——桌面端包里搜不到它，
+ * 也没有 `cosy-version` 头，`minimal_version.cli` 门禁并不校验这个值。
+ *
+ * 可自动更新：见 `fetchIdentity()`（读 electron-updater 的 `latest.yml`）。
+ */
+export const QODER_VERSION = '0.5.17';
 
-const USER_AGENT = `qoder/${QODER_CLI_VERSION}`;
+/** 桌面端的更新源（`resources/app-update.yml` 的 `url`，Windows 版是 `static.` 域）。 */
+export const QODER_UPDATE_FEED = 'https://static.qoder.com.cn/qoder-app/releases';
+
+/** 读 electron-updater 的 `latest.yml` 拿最新版本号。 */
+export async function fetchLatestVersion(feedUrl: string): Promise<string> {
+  const response = await fetch(`${feedUrl}/latest.yml`, { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`版本文件 HTTP ${response.status}`);
+  const text = await response.text();
+  const match = /^version:\s*(\S+)/m.exec(text);
+  if (!match) throw new Error('latest.yml 里没有 version 字段');
+  return match[1];
+}
+
+const USER_AGENT = `qoder/${QODER_VERSION}`;
 
 // 轮询节奏，和 CLI 一致：间隔 1 秒，总超时 5 分钟。
 const POLL_INTERVAL_MS = 1000;

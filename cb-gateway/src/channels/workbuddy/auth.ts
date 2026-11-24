@@ -24,6 +24,29 @@ function log(...args: unknown[]) {
  */
 const versions = { clientVersion: '5.9.3', channelVersion: '2.165.0', ideVersion: '5.9.3' };
 
+/** 更新源（`download.codebuddy.cn/workbuddy/saas/version.json`，8 个平台 × stable/gray）。 */
+const VERSION_URL = 'https://download.codebuddy.cn/workbuddy/saas/version.json';
+
+/**
+ * 查上游最新版本。**读 Windows 桌面端那一档**（`win32-x64-system`），
+ * 因为网关报的就是 Windows 头；Linux 包比它旧一截（实测 `5.6.2` vs `5.11.3`）。
+ *
+ * 版本串形如 `5.11.3.43806934-ecace0f7`：前三段是 `clientVersion`，
+ * 第四段是构建号（`channelVersion`）。
+ */
+export async function fetchWorkBuddyVersion(): Promise<{ clientVersion: string; channelVersion: string; ideVersion: string }> {
+  const response = await fetch(VERSION_URL, { signal: AbortSignal.timeout(20_000) });
+  if (!response.ok) throw new Error(`版本接口 HTTP ${response.status}`);
+  const body = (await response.json()) as any;
+  const raw = body?.['win32-x64-system']?.stable?.version;
+  if (typeof raw !== 'string' || raw === '') throw new Error('version.json 里没有 win32-x64-system.stable.version');
+  const [numeric] = raw.split('-');
+  const parts = numeric.split('.');
+  if (parts.length < 4) throw new Error(`版本串格式不认识：${raw}`);
+  const main = parts.slice(0, 3).join('.');
+  return { clientVersion: main, channelVersion: parts[3], ideVersion: main };
+}
+
 /**
  * 由通道在 `configure()` 里注入真实版本。**唯一的注入点**：`upstream.ts` / `models.ts` /
  * `login.ts` 都从这里取——各处自己接一个 `configure*()` 的话，加一个版本字段就要改四个文件。

@@ -9,7 +9,6 @@
 
 import { channels } from '../channels/index.ts';
 import { replaceVersions, lastFetchedAt, listVersions } from '../store/versions.ts';
-import type { ChannelIdentity } from '../types.ts';
 
 /** 版本号多久重新拉一次。上游客户端自己也是几小时检查一次，太频繁会被风控标记。 */
 export const VERSION_REFRESH_MS = 24 * 60 * 60 * 1000;
@@ -60,19 +59,25 @@ export async function refreshAllVersions(now = Date.now()): Promise<{ channelId:
 }
 
 /**
- * 生效的 `identity`：**库里的值覆盖代码里的写死值**，库里没有就用代码的。
+ * 启动时把库里缓存的版本号**就地写进通道的 `identity`**。
  *
- * 只在启动时调一次（见文件头：运行中改会让指纹混乱）。
+ * 必须在 `channel.configure()` 之前调：`configure` 会把 `identity` 转发给各通道模块
+ * （`configureTraeIdentity` / `configureWorkBuddy` 等），之后改 `identity` 就没用了。
+ *
+ * 直接改对象而不是返回新对象：`configure` 拿的是 `traeChannel.identity` 这个引用，
+ * 换新对象它还是拿到旧的。
  */
-export function effectiveIdentity(channelId: string, base: ChannelIdentity): ChannelIdentity {
-  const rows = listVersions(channelId);
-  if (rows.length === 0) return base;
-  const merged: ChannelIdentity = { ...base };
-  for (const row of rows) {
-    // 只覆盖本来就有的字段：库里出现代码没声明的字段说明是脏数据，忽略。
-    if (row.field in merged) (merged as unknown as Record<string, string>)[row.field] = row.value;
+export function applyCachedIdentities(): void {
+  for (const channel of channels) {
+    const rows = listVersions(channel.id);
+    if (rows.length === 0) continue;
+    for (const row of rows) {
+      if (row.field in channel.identity) {
+        (channel.identity as unknown as Record<string, string>)[row.field] = row.value;
+      }
+    }
+    log(`version ${channel.id}: 用库里的缓存（${rows.map((r) => `${r.field}=${r.value}`).join(' ')}）`);
   }
-  return merged;
 }
 
 /** 给 `/api/health` 用：这个通道的版本号是哪来的。 */

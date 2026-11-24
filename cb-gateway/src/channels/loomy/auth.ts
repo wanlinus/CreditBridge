@@ -24,6 +24,19 @@ const ACCESS_KEY_SECRET = 'zsak6eadrbawz683wf5r3m2snrwj868r';
 /** 客户端版本：`loomy-version` 头 + 通道 identity 都用它。 */
 export const LOOMY_VERSION = '0.9.39';
 
+/** 桌面端更新源（`electron-updater` 的 `latest.yml`）。 */
+const UPDATE_FEED = 'https://static-res.xfinfr.com/loomy/win';
+
+/** 读 `latest.yml` 拿最新版本号。 */
+export async function fetchLoomyVersion(): Promise<string> {
+  const response = await fetch(`${UPDATE_FEED}/latest.yml`, { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`版本文件 HTTP ${response.status}`);
+  const text = await response.text();
+  const match = /^version:\s*(\S+)/m.exec(text);
+  if (!match) throw new Error('latest.yml 里没有 version 字段');
+  return match[1];
+}
+
 /** 客户端 `_makeBase()` 的固定字段。`ua` 里写死 macOS 是客户端自己的 bug，照抄以对齐指纹。 */
 const UA = 'Loomy|Desktop|Electron|macOS';
 

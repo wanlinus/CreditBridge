@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 // 版本串的唯一来源在 `login.ts`（那边要拼 `User-Agent`），这里 re-export 成签名器用的名字。
-export { QODER_CLI_VERSION as COSY_VERSION } from '../login.ts';
+export { QODER_VERSION as COSY_VERSION } from '../login.ts';
 
 export const DEFAULT_ENDPOINT = 'https://gateway.qoder.com.cn';
 

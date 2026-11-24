@@ -4,7 +4,7 @@
 
 import type { AppConfig } from '../../types.ts';
 import { defineChannel } from '../types.ts';
-import { LOOMY_VERSION, setLoomyLogger } from './auth.ts';
+import { fetchLoomyVersion, LOOMY_VERSION, setLoomyLogger } from './auth.ts';
 import { runLoomyLogin } from './login.ts';
 import { buildModelList, loomyCatalog } from './models.ts';
 import { chatLoomy, setLoomyUpstreamLogger } from './upstream.ts';
@@ -23,6 +23,11 @@ export const loomyChannel = defineChannel({
   // 客户端身份：桌面端 package.json 的 version（`loomy-version` 头也用它）。
   identity: {
     clientVersion: LOOMY_VERSION,
+  },
+
+  /** 桌面端走标准 electron-updater，`latest.yml` 里有 `version:`。 */
+  async fetchIdentity() {
+    return { clientVersion: await fetchLoomyVersion() };
   },
 
   configure({ log, config: next }) {
