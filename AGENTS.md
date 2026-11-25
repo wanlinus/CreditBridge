@@ -148,6 +148,16 @@
 - **版本号自动跟进上游**：每个通道实现 `Channel.fetchIdentity()` 就去官网查最新版本（四家接口见 `private/docs/protocols/README.md`），存 `channel_version` 表，**和签到同一个定时任务里每天刷一次**。启动时 `applyCachedIdentities()` 用库里的值覆盖代码默认值。**代码里的默认值只在库为空时生效**，所以改上游协议时两个地方都要更新。
 - **`identity` 在 `configure()` 之前就要定好**：`configure` 会把 `identity` 转发给各通道模块（`configureTraeIdentity` / `configureWorkBuddy`），之后改就晚了。运行中也不热改——同一进程里带不同版本号会让上游看到的指纹混乱。改版本号靠重启（几十毫秒）。
 - **不再有「本地构建 + scp」的路径**：`deploy.ps1` 原来会 `docker build` → `save` + gzip → scp → `load`，165 行里有 4 个坑（双重 tar、BOM、CRLF、`docker info --format`）。换成拉镜像之后这些都不存在了，脚本 90 行。**想测未提交的代码就本地 `npm start`**，不要为了试改动去改部署链路。
+- **测未发布的镜像用 `~/docker/cb-test/`，不要动生产**：服务器上两个环境并存，完全隔离：
+
+  | | 生产 `~/docker/cb-gateway/` | 测试 `~/docker/cb-test/` |
+  |---|---|---|
+  | 容器名 | `cb-gateway` | `cb-test` |
+  | 端口 | 7801 / 18801 | **7811 / 18811** |
+  | `data/` | 真实账本和凭据 | **独立空库** |
+
+  验证未发布代码的流程：本地 `docker build` → `docker save` + gzip → `scp` 到 `/tmp` → 在 `cb-test` 目录 `docker load` + 改 image 行 + `up -d` → 访问 **7811** 验证。
+  **测完必须把 `cb-test` 的 compose 改回 `ghcr.io/...:latest` 并删掉临时 tag**，否则下次 `docker compose pull` 会找不到镜像（2026-11-25 踩过两次：本地 tag 留在生产的 compose 里，`pull access denied`）。
 - **Dockerfile 是多阶段构建**（2026-11-25 改）：`web` 阶段用 pnpm 编译前端，`COPY --from=web` 拿产物。所以 `docker build .` 一步到位，不依赖本机先跑 `build:web`。改 Dockerfile 时注意两点：① 前端产物来自 `--from=web` 的 `/build/dist`，不是 `COPY web/dist`；② `web/package.json` 的 `packageManager` 字段决定 CI 用哪个 pnpm 版本，改它等于改 CI。
 - **CI 在 `.github/workflows/ci.yml`**：`check` job（类型检查 + 测试）过了才跑 `image` job（构建镜像推 GHCR）。CI 里的命令和本地完全一致，改 `package.json` 的 scripts 会同时影响两边。
 - **`npm test` 依赖 `web/dist`**：`test/e2e-http.mjs` 验证静态资源托管，没产物会有 1 项失败（`/accounts 页面带 Cookie → 200`）。CI 里顺序是「先 build 再 test」，本地手动跑也要注意。

@@ -1,0 +1,34 @@
+# 测试环境：和生产完全隔离，用来验证未发布的镜像。
+#
+# 部署到服务器 `~/docker/cb-test/`：
+#   scp cb-gateway/scripts/compose.test.yaml <server>:~/docker/cb-test/compose.yaml
+#   cd ~/docker/cb-test && docker compose up -d
+#
+# 和生产的三处隔离：容器名、端口、data/ 目录。**不共用任何东西**。
+services:
+  cb-test:
+    image: ghcr.io/wanlinus/creditbridge:latest
+    container_name: cb-test
+    restart: unless-stopped
+    ports:
+      - "7811:7801"
+      - "18811:18801"
+    environment:
+      TZ: Asia/Shanghai
+      QB_HOST: "0.0.0.0"
+      QB_TRAE_LOGIN_HOST: "0.0.0.0"
+      QB_TRAE_LOGIN_PORT: "18801"
+      QB_TRAE_CALLBACK_BASE: "http://127.0.0.1:18801"
+    volumes:
+      - ./data:/app/data
+    mem_limit: 1536m
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:7801/login').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
