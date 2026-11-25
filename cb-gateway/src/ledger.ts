@@ -21,6 +21,7 @@ import {
   usageHourlyGroups,
   usageModelGroups,
   usagePricingRows,
+  usageProvidersWithoutCredit,
   usageRecent,
   usageStatusCounts,
   usageTotals,
@@ -251,6 +252,13 @@ export async function usageSummary(options: { provider?: string | null; account?
     window: { days: WINDOW_DAYS, since: windowSince },
     totals: { ...totals, credits: round(totals.credits) },
     today: { ...today, credits: round(today.credits) },
+    /**
+     * 今天有请求、但一次都没报 `credit` 的通道。
+     *
+     * 界面据此把「已用积分（今日）」显示成 `—` 而不是 `0`——Trae/WorkBuddy 只报
+     * token 不报积分，汇总出来必然是 0，而 0 会被读成「用了但没花钱」。
+     */
+    todayCreditsMissing: usageProvidersWithoutCredit(filter, todaySince),
     daily: dayKeys.map((key) => {
       const bucket = dayBuckets.get(key)!;
       // Map 转普通对象，给前端用（序列化进页面的 JSON）。

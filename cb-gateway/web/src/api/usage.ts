@@ -201,6 +201,13 @@ export interface UsageResponse {
   window: { days: number; since: number };
   totals: UsageTotals;
   today: TodayTotals;
+  /**
+   * 今天有请求、但一次都没报 `credit` 的通道（如 Trae / WorkBuddy 只报 token）。
+   *
+   * 非空时「已用积分（今日）」要显示 `—` 而不是 `0`：0 会被读成「用了但没花钱」，
+   * 实际是「这个通道不提供这个数」。
+   */
+  todayCreditsMissing: string[];
   /** 恒 14 项，按日期升序，最后一项是今天。 */
   daily: DailyBucket[];
   byModel: ModelBucket[];

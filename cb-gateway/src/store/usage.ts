@@ -209,6 +209,36 @@ export function usageStatusCounts(filter: UsageFilter = {}, since?: number | nul
 }
 
 /**
+ * 哪些通道**一次都没报过** `credit`（窗口内全是 NULL）。
+ *
+ * Trae 和 WorkBuddy 只报 token、不报单次积分，所以它们的 `credit` 恒为 NULL。
+ * 「已用积分」卡片据此显示 `—` 而不是 `0`——**0 会被读成「用了但没花钱」**，
+ * 而事实是「这个通道不提供这个数」。
+ *
+ * 只返回**有请求但全无 credit** 的通道：一个请求都没有的通道不进来，
+ * 那属于「今天没用过」，不是「不报」。
+ */
+export function usageProvidersWithoutCredit(filter: UsageFilter = {}, since?: number | null): string[] {
+  const { sql, params } = whereOf(filter, since);
+  const rows = db
+    .prepare(
+      `SELECT provider,
+              COUNT(*) AS total,
+              SUM(CASE WHEN credit IS NULL THEN 1 ELSE 0 END) AS nulls
+         FROM usage_record ${sql}
+        GROUP BY provider`,
+    )
+    .all(...params) as any[];
+  const out: string[] = [];
+  for (const row of rows) {
+    const total = num(row.total);
+    // 全是 NULL 才算「不报」；有任何一个有值就说明这个通道报得了，只是有些请求缺。
+    if (total > 0 && num(row.nulls) === total) out.push(String(row.provider));
+  }
+  return out.sort();
+}
+
+/**
  * 近 N 天按「天 × 模型 × 账号 × 通道」分组。
  *
  * **按 `MIN(id)` 排序**（= 首次出现的顺序）：`GROUP BY` 本身按分组键排，而旧实现是 Map 的

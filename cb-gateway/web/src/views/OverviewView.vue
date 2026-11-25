@@ -120,6 +120,28 @@ const creditTotal = computed(() =>
 const cacheHit = computed(() => fmtRatio(today.value?.cacheHit?.rate));
 
 /**
+ * 「已用积分（今日）」该显示什么。
+ *
+ * Trae 和 WorkBuddy **只报 token、不报单次积分**，所以它们的 `credit` 在账本里恒为 NULL，
+ * 汇总出来必然是 0。显示 0 会被读成「用了但没花钱」——事实是「这个通道不提供这个数」。
+ *
+ * 判定依据是后端给的 `todayCreditsMissing`（今天有请求但全无 credit 的通道），
+ * **不是前端猜**：有值就说明至少部分通道报得了，那时 0 是真的 0。
+ */
+const todayCredits = computed(() => {
+  const missing = summary.value?.todayCreditsMissing ?? [];
+  if (missing.length > 0) return '—';
+  return fmtNum(today.value?.credits);
+});
+
+/** 副行说明「为什么是 —」。没有缺失时留空。 */
+const todayCreditsNote = computed(() => {
+  const missing = summary.value?.todayCreditsMissing ?? [];
+  if (missing.length === 0) return '';
+  return `${missing.join('/')} 不报单次积分`;
+});
+
+/**
  * 卡片副行：不声不响换口径是不行的，把「不含谁、按多少推算」写出来。
  *
  * 例：`不含 trae（按 99.0% 推算）`——读者一眼知道 99.0% 这个数是怎么来的。
@@ -291,10 +313,13 @@ function refresh(): void {
         <template #note>所有账号剩余积分合计</template>
       </MetricCard>
 
-      <MetricCard label="已用积分（今日）" :value="fmtNum(today?.credits)">
+      <MetricCard label="已用积分（今日）" :value="todayCredits">
         <template #note>
-          {{ windowLabel }} {{ fmtNum(summary?.totals?.credits) }}
-          <span v-if="uncachedLabel" class="uncached" :title="uncachedHint">{{ uncachedLabel }}</span>
+          <span v-if="todayCreditsNote">{{ todayCreditsNote }}</span>
+          <template v-else>
+            {{ windowLabel }} {{ fmtNum(summary?.totals?.credits) }}
+            <span v-if="uncachedLabel" class="uncached" :title="uncachedHint">{{ uncachedLabel }}</span>
+          </template>
         </template>
       </MetricCard>
 
