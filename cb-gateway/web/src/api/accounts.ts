@@ -61,6 +61,8 @@ export interface ChannelCapability {
   id: string;
   label: string;
   idPrefix: string;
+  /** 报给上游的客户端版本号。字段名各家不同（`clientVersion` / `channelVersion` / `appVersion`），所以是开放字典。 */
+  identity: Record<string, string>;
   multiAccount: boolean;
   canLogin: boolean;
   canLogout: boolean;

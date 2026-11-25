@@ -230,6 +230,24 @@ function canAdd(channelId: string): boolean {
 }
 
 /**
+ * 通道报给上游的版本号，拼成一行给人看。
+ *
+ * 各家字段名和个数都不同（WorkBuddy 三个、Qoder 一个），所以**只列实际有的**，
+ * 不补空值——`channelVersion: —` 会让人以为「这个字段读失败」。
+ * `clientVersion` 排最前：它是换令牌的门禁字段，排查「客户端太旧」先看它。
+ */
+function versionText(channel: { identity?: Record<string, string> }): string {
+  const identity = channel.identity ?? {};
+  const order = ['clientVersion', 'channelVersion', 'ideVersion', 'appVersion'];
+  const keys = [...order.filter((key) => identity[key]), ...Object.keys(identity).filter((key) => !order.includes(key))];
+  if (keys.length === 0) return '';
+  // 只有一个字段时省略字段名（`0.5.18` 比 `clientVersion 0.5.18` 好读）。
+  if (keys.length === 1) return identity[keys[0]];
+  return keys.map((key) => `${key.replace(/Version$/, '')} ${identity[key]}`).join(' · ');
+}
+
+
+/**
  * 页面级错误条。
  *
  * **有任务面板时不重复显示 `login.error`**：回填失败这类错误已经在面板里出现一次，
@@ -330,6 +348,11 @@ onMounted(() => {
         />
         <span>{{ group.channel.label }}</span>
         <code>{{ group.channel.idPrefix }}</code>
+        <span
+          v-if="versionText(group.channel)"
+          class="version"
+          :title="`报给上游的客户端版本号：${versionText(group.channel)}`"
+        >{{ versionText(group.channel) }}</span>
         <span class="muted small">
           {{ group.rows.length }} 个账号{{ group.channel.multiAccount ? '' : ' · 单账号通道' }}
         </span>
@@ -402,6 +425,20 @@ onMounted(() => {
 
 .card .title {
   gap: 8px;
+}
+
+/* 版本号比通道名弱、比 `idPrefix` 更弱：它是排查用的辅助信息，不该抢视线。 */
+.card .title .version {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: var(--surface-2, rgba(127, 127, 127, 0.12));
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40ch;
 }
 
 .card .body.flush {

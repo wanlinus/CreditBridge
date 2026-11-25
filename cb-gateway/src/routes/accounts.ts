@@ -72,6 +72,8 @@ accountsRoutes.get('/api/accounts', async (c) => {
       id: channel.id,
       label: channel.label,
       idPrefix: channel.idPrefix,
+      /** 报给上游的客户端版本号。界面显示它是为了排查「上游说客户端太旧」——那个报错看着像签名问题。 */
+      identity: channel.identity,
       multiAccount: channel.multiAccount !== false,
       // 能力位是**自述**的，且只有 `core/channel-info.ts` 一个来源：三处响应各抄一遍的话，
       // 加第五个能力位时必然漏一处，而漏掉的表现是「按钮永远不出现」。
