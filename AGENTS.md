@@ -156,8 +156,16 @@
   | 端口 | 7801 / 18801 | **7811 / 18811** |
   | `data/` | 真实账本和凭据 | **独立空库** |
 
-  验证未发布代码的流程：本地 `docker build` → `docker save` + gzip → `scp` 到 `/tmp` → 在 `cb-test` 目录 `docker load` + 改 image 行 + `up -d` → 访问 **7811** 验证。
-  **测完必须把 `cb-test` 的 compose 改回 `ghcr.io/...:latest` 并删掉临时 tag**，否则下次 `docker compose pull` 会找不到镜像（2026-11-25 踩过两次：本地 tag 留在生产的 compose 里，`pull access denied`）。
+  验证未发布代码的流程：
+
+  ```powershell
+  .\cb-gateway\scripts\deploy-test.ps1 -Server <地址>     # 构建 + 上传 + 起 cb-test（端口 7811）
+  .\cb-gateway\scripts\reset-test.ps1  -Server <地址>     # 测完切回 GHCR 镜像
+  ```
+
+  **测完必须 `reset-test.ps1`**，否则测试 compose 里留着本地 tag，下次 `docker compose pull` 会 `pull access denied`（2026-11-25 踩过两次）。
+
+  **想让测试环境跑真实数据**：`.\cb-gateway\scripts\copy-data-to-test.ps1 -Server <地址>`。它用 `VACUUM INTO` 做快照，**不能直接 `cp gateway.db`**——SQLite 在 WAL 模式下 WAL 可能比主库还大（实测 1.8M 主库 vs 4.0M WAL），只拷 `.db` 会静默丢掉未 checkpoint 的数据，账本看起来莫名少了。生产侧只读。
 - **Dockerfile 是多阶段构建**（2026-11-25 改）：`web` 阶段用 pnpm 编译前端，`COPY --from=web` 拿产物。所以 `docker build .` 一步到位，不依赖本机先跑 `build:web`。改 Dockerfile 时注意两点：① 前端产物来自 `--from=web` 的 `/build/dist`，不是 `COPY web/dist`；② `web/package.json` 的 `packageManager` 字段决定 CI 用哪个 pnpm 版本，改它等于改 CI。
 - **CI 在 `.github/workflows/ci.yml`**：`check` job（类型检查 + 测试）过了才跑 `image` job（构建镜像推 GHCR）。CI 里的命令和本地完全一致，改 `package.json` 的 scripts 会同时影响两边。
 - **`npm test` 依赖 `web/dist`**：`test/e2e-http.mjs` 验证静态资源托管，没产物会有 1 项失败（`/accounts 页面带 Cookie → 200`）。CI 里顺序是「先 build 再 test」，本地手动跑也要注意。
