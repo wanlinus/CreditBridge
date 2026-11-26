@@ -9,6 +9,11 @@ export interface ChannelCapabilities {
   canRotateDevice: boolean;
   canVerify: boolean;
   canCheckin: boolean;
+  /**
+   * 登录要不要先开一个空白窗接授权页。`false` = 表单式登录（短信/cookie），
+   * 前端不该开窗——那会留一个永远停在 `about:blank` 的标签页。
+   */
+  opensWindow: boolean;
 }
 
 /**
@@ -25,6 +30,8 @@ export function capabilitiesOf(channel: Channel): ChannelCapabilities {
     canRotateDevice: typeof channel.rotateDeviceIdOf === 'function',
     canVerify: typeof channel.probe === 'function',
     canCheckin: typeof channel.checkinClaimOf === 'function',
+    // 默认开窗：只有明确声明 `loginMode: 'form'` 的通道才不开，老通道行为不变。
+    opensWindow: channel.loginMode !== 'form',
   };
 }
 

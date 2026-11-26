@@ -21,6 +21,12 @@ export interface LoginTask {
   /** 回调要不要「浏览器那台机器」把 127.0.0.1:<port> 转进来。起任务时算一次存下来。 */
   loopback: { port: number; path: string } | null;
   accountId?: string;
+  /**
+   * 上游要求用户完成验证（图形验证码）时带上，界面据此渲染验证页。
+   * **为空不代表没风控**：豆包 2046 走的是登录流程里的 `prompt`（二维码/短信号码），
+   * 不是这条路径。
+   */
+  challenge?: { url: string; code: string; subtype: string } | null;
   /** 用来掐掉上一次：用户再点一次「登录」就是重来一遍，不该干等 5 分钟。 */
   controller?: AbortController;
   /** 当前 prompt 的应答器（用户提交后 resolve，取消后 reject）。 */
@@ -53,6 +59,7 @@ export function publicTask(task: LoginTask) {
     startedAt: task.startedAt,
     finishedAt: task.finishedAt,
     accountId: task.accountId ?? null,
+    challenge: task.challenge ?? null,
   };
 }
 
@@ -107,11 +114,29 @@ export function materializeAccount(channel: Channel, result: any): Account | und
 }
 
 /**
- * 同通道已有任务在跑时**掐掉旧的再起新的**，不复用：页面上那个「登录中…」卡住时用户能做
- * 的唯一一件事就是再点一次，复用会让这次点击变成无操作。
+ * 起一次登录。同通道已有任务在跑时怎么处理，**取决于那个任务在等什么**：
+ *
+ * - **正在等用户输入（有 `prompt`）→ 复用，不取消。** 此刻取消代价最高：验证码已经发到
+ *   用户手机上了，取消就要等 60 秒才能重发。而用户重复点「登录」多半是误触或刷新页面，
+ *   不是真想重来。
+ * - **在等上游（没 `prompt`，比如 URL 式登录迟迟不给授权地址）→ 掐掉重起。** 那种时候
+ *   「卡住」是真的，用户能做的唯一一件事就是再点一次，复用会让这次点击变成无操作。
+ *
+ * 2026-11-26 踩过全掐的版本：用户在收验证码时误点了一下，整条登录被取消、输入框消失，
+ * 而他并不知道自己做了什么。
  */
 export function startLogin(channel: Channel): { ok: boolean; task?: LoginTask; error?: string } {
   if (typeof channel.login !== 'function') return { ok: false, error: `${channel.label} 不支持自助登录` };
+
+  // 有 prompt 在等输入 = 已经走到问用户话了，复用它。
+  const waiting = [...loginTasks.values()].find(
+    (item) => item.channelId === channel.id && item.state === 'running' && item.prompt !== null,
+  );
+  if (waiting) {
+    log(`${channel.id} 已有任务在等用户输入（${waiting.taskId}），复用而不是重起`);
+    return { ok: true, task: waiting };
+  }
+
   // 单账号通道已经有号时，登录的含义是「重新登录这个号」，仍然允许。
   const cancelled = cancelRunningLogins(channel.id);
   if (cancelled > 0) log(`${channel.id} 重新发起登录，取消了 ${cancelled} 个未完成任务`);
@@ -189,6 +214,8 @@ export function startLogin(channel: Channel): { ok: boolean; task?: LoginTask; e
       task.state = 'error';
       task.finishedAt = Date.now();
       task.message = error && error.message ? error.message : String(error);
+      // 上游出了验证题就带给界面（图形验证码走这条；2046 的二维码走 prompt）。
+      if (error && error.challenge) task.challenge = error.challenge;
       log(`${channel.id} 登录失败：${task.message}`);
       emitLogin(task);
     });

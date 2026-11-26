@@ -84,7 +84,7 @@ v2 之后它只有一个对外入口：`/v1/*`（OpenAI 兼容）+ `/api/*` 和�
 
 ---
 
-## 二、四个通道对比
+## 二、五个通道对比
 
 | 通道 | `idPrefix` | 多账号 | 对话怎么走 | 额度/签到 | 登录形态 |
 |---|---|---|---|---|---|
@@ -92,14 +92,59 @@ v2 之后它只有一个对外入口：`/v1/*`（OpenAI 兼容）+ `/api/*` 和�
 | Trae CN | `tr` | ✅ | 纯 HTTP（私有方言，需双向翻译） | `batch_get_detail_param` + 签到接口 | 网页授权（URL，**要环回回调**） |
 | Qoder | `qd` | ✅ | 纯 HTTP SSE（COSY 签名，外层包内层） | `/sash/*` | 设备码授权（一次） |
 | Loomy | `lo` | ✅ | 纯 HTTP `/api/v1/chat/completions`（原样透传） | `/api/v1/points/records` | **短信验证码表单**（`onPrompt`） |
+| 豆包 | `db` | ✅ | 纯 HTTP 自定义 SSE（`patch_op` 结构，需双向翻译） | `/alice/commerce/sale/subscription/quota/summary/` | **粘贴 cookie**（`onPrompt`） |
 
-**四个通道都是纯 HTTP，没有子进程。** Qoder 曾经要起常驻 CLI 子进程（对话靠它的登录态），
+**五个通道都是纯 HTTP，没有子进程。** Qoder 曾经要起常驻 CLI 子进程（对话靠它的登录态），
 2026-11-22 逆出 COSY 签名（一块 wasm 从 `dt-` 现算 `encrypt_user_info` / `key`）之后 CLI
 整条删掉了——顺带把「只能挂一个号」的限制也放开了。
 
-四个通道的文件集也一致：`auth` / `login` / `models` / `upstream` / `usage` / `index`。
+五个通道的文件集也一致：`auth` / `login` / `models` / `upstream` / `usage` / `index`。
 能力差异由 `typeof channel.x === 'function'` 自述（见 `core/channel-info.ts`）：
-Loomy 没有签到（上游没这接口），其余三个都有。
+**只有 Loomy 没有签到**（上游确实没这接口），其余四个都有。
+
+豆包的签到是 2026-11-26 补上的：`POST /alice/ug/campaign/landing/checkin`，
+body 只有一个 `scene: 'pc_incentive_task_mvp_v3'`。**唯一门槛是 query 里的
+`pc_version` 必须非空**——空值回 `710010702 系统错误`，那个码看起来像 cookie 过期，
+很容易往错的方向查。完整逆向见 `private/docs/recon/doubao-checkin.md`。
+
+**豆包没有只读的签到状态查询接口**：`landing/checkin` 是动作，调一次签一次
+（幂等但消耗一次请求）。所以它只实现 `checkinClaimOf` + `lastCheckinOf`，
+不实现 `checkinStatusOf`——面板读本地记录。
+
+**豆包有三处结构性差异**，看代码前先知道：
+
+- **`reportsTokens: false`**——对话 SSE 里没有任何 token 计数字段（160 个 key 全扫过）。
+  唯一沾边的是 `option.agent_mode` 触发的 `context_window_usage`，但它出现的条件不稳定、
+  且 `tools` 一项就含 25K 注入的工具定义，**不能当用量**。所以它的账号在概览页只显示余额。
+- **登录是粘贴 cookie**：passport 侧没给这个 app 开任何自助登录方式（短信/扫码都回
+  `error_code 16`），只能从客户端导出。用 `onPrompt` 而不是 `onUrl`，所以
+  `canLogin` 为真、前端不用改。
+- **对话有独立风控**：高频请求回 `710022004`（`error_msg` 写 `rate limited` 但真实原因在
+  `decision.subtype = semantic_reasoning`）。`channels/doubao/upstream.ts` 把它映射成
+  **429**，账号标 `cooldown` 而不是 `invalid`——否则一次风控就把号封成失效。
+- **风控判定集中在 `channels/doubao/risk-control.ts`**：登录和对话共用一份码表。
+  一律映射成 **429**（429 让路由标 `cooldown`；401 会标 `invalid`，风控是临时的，标 invalid 是误伤）。
+  `1105` 带 `verify_center_decision_conf`（挑战数据在 `detail` 里，**不是**顶层 `captcha`），
+  登录时会把验证页嵌进弹窗让用户点。
+- **`2046` 的验证由 `channels/doubao/verify-ways.ts` 自己做完**（2026-11-26 实现）。
+  上游给 `verify_ways`，网关**把全部方式列出来让用户选**，不替用户挑——只有用户知道
+  自己手边有没有另一台登录着豆包的设备。三种是纯 HTTP：
+
+  | 方式 | 接口 | 用户要做什么 |
+  |---|---|---|
+  | `mobile_up_sms_verify` | `POST /passport/upsms/verify/` | 自己用手机把 `sms_content` 发到 `channel_mobile` |
+  | `push_verify` | `POST /passport/web/send_push/` + `POST /passport/device/check_push_code/` | 从已登录设备的通知里抄 6 位码填进网关 |
+  | `qr_code_verify` | `GET /passport/web/get_qrcode/` + `POST /passport/web/validate_by_qrcode/` | 用已登录设备扫网关显示的二维码 |
+
+  `oauth_douyin_verify` 要跳抖音授权页，做不到，界面上灰掉并写明原因。
+  **验证通过后必须重放原请求**（`biz_params` 合进表单 + query 加 `isResend=1`），
+  那是 passport SDK `processPlugin` 的做法，漏了上游会再回一次 2046。
+  完整逆向过程见 `private/docs/recon/doubao-2046-verify-ways.md`。
+- **`channels/doubao/passport.ts` 是登录的 HTTP 底座**：cookie 罐、query/header 构造、
+  `ttwid` 注册、脱敏日志。`login.ts` 只管流程。
+  **cookie 罐必须贯穿整个登录**——上游在校验验证码那步下发 `passport_mfa_token` / `d_ticket`，
+  选号不带它们会回 2046。**业务错误码时打印完整响应 JSON**，不挑字段：
+  2026-11-26 因为只打 `captcha` / `desc_url`，漏掉 `verify_center_decision_conf` 查了一整天。
 
 ---
 

@@ -27,7 +27,8 @@
     "test:checkin-switch": "node test/checkin-switch.mjs",
     "test:routes": "node test/openai-route.mjs",
     "test:http": "node test/e2e-http.mjs",
-    "test": "node test/model-router.mjs && node test/model-visibility.mjs && node test/accounts.mjs && node test/keys.mjs && node test/gateway-auth.mjs && node test/persistence.mjs && node test/store-usage.mjs && node test/usage-daily.mjs && node test/usage-hourly.mjs && node test/deepseek-pricing.mjs && node test/checkin-scheduler.mjs && node test/checkin-switch.mjs && node test/openai-route.mjs && node test/e2e-http.mjs"
+    "test:doubao": "node test/doubao-risk-control.mjs",
+    "test": "node test/model-router.mjs && node test/model-visibility.mjs && node test/accounts.mjs && node test/keys.mjs && node test/gateway-auth.mjs && node test/persistence.mjs && node test/store-usage.mjs && node test/usage-daily.mjs && node test/usage-hourly.mjs && node test/deepseek-pricing.mjs && node test/checkin-scheduler.mjs && node test/checkin-switch.mjs && node test/login-tasks.mjs && node test/openai-route.mjs && node test/doubao-risk-control.mjs && node test/doubao-verify-ways.mjs && node test/doubao-checkin.mjs && node test/login-components.mjs && node test/e2e-http.mjs"
   },
   "engines": {
     "node": ">=22.18.0"

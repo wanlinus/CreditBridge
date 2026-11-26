@@ -16,6 +16,10 @@ services:
       QB_TRAE_LOGIN_HOST: "0.0.0.0"
       QB_TRAE_LOGIN_PORT: "18801"
       QB_TRAE_CALLBACK_BASE: "http://127.0.0.1:18801"
+      # 豆包登录用的设备号。**不配就用随机号，账号开了「仅常用设备登录」时会被拦（2046）。**
+      # 值从豆包客户端读：User Data/ahanet/tt_net_config.config 里的 device_id&#*<数字>。
+      # 这个容器是测试环境，先用抓包验证过的那个号。
+      QB_DOUBAO_DEVICE_ID: "859132628058556"
     volumes:
       - ./data:/app/data
     # 实测静息约 190 MB。超了让它 OOM 重启，而不是拖垮整台机器。

@@ -210,7 +210,14 @@ check(
 
 const accountsApi = await (await fetch(base + "/api/accounts", { headers: bearer })).json();
 check("/api/accounts 带余额字段", typeof accountsApi.accounts[0].totalRemain, "object");
-check("/api/accounts 带能力位", ["canLogin", "canLogout", "canRotateDevice", "canVerify"].every((k) => typeof accountsApi.channels[0][k] === "boolean"));
+check("/api/accounts 带能力位", ["canLogin", "canLogout", "canRotateDevice", "canVerify", "opensWindow"].every((k) => typeof accountsApi.channels[0][k] === "boolean"));
+// `opensWindow` 决定前端要不要开空白窗接授权页。**表单式登录必须为 false**，
+// 否则用户点「添加」会看到一个永远白着的标签页（豆包、Loomy 都中过）。
+check(
+  "表单式通道不开空白窗",
+  accountsApi.channels.filter((c) => c.opensWindow === false).map((c) => c.id).sort(),
+  ["doubao", "loomy"],
+);
 
 // 主动刷新积分的两个入口：只验路由边界（不存在的 id 必须 404，别掉进真上游）
 check(

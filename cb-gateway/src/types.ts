@@ -180,6 +180,36 @@ export interface ChannelContext {
   config: AppConfig;
 }
 
+/**
+ * 登录形态。决定前端要不要在点击时先开一个空白窗。
+ *
+ * - `url`：授权页式（WorkBuddy / Trae / Qoder）。网关会把授权地址交出来，
+ *   浏览器得**在点击的同一轮事件里**先开好窗，否则弹窗拦截会静默失败。
+ * - `form`：表单式（Loomy 短信 / 豆包短信或 cookie）。不产生授权地址，
+ *   **不该开窗**——开了就是一个永远停在 `about:blank` 的空白标签页。
+ *
+ * 默认 `url`：只有明确声明 `form` 的通道才不开窗，这样老通道行为不变。
+ */
+export type LoginMode = 'url' | 'form';
+
+/** 一个可选项。有 `options` 的 prompt 前端渲染成按钮，而不是输入框。 */
+export interface LoginPromptOption {
+  /** 回填给通道的值（`onPrompt` 收到的那个字符串）。 */
+  value: string;
+  label: string;
+  /** 悬停提示，说清这个选项的适用条件。 */
+  hint?: string;
+  /** 头像 URL（账号选择用）。有它就渲染成带头像的卡片。 */
+  avatar?: string;
+  /** 第二行副标题（比如租户名「飞书个人版」）。 */
+  subtitle?: string;
+  /**
+   * 这一项选不了，界面上灰掉。**仍然显示**——用户得知道上游给了哪些选项，
+   * 不然会以为网关漏了。典型：豆包 2046 的 `oauth_douyin_verify`（要跳抖音授权）。
+   */
+  disabled?: boolean;
+}
+
 export interface LoginPrompt {
   /** 一次登录可能有多个 prompt（手机号 → 验证码），靠它区分，前端据此重建输入框。 */
   id: string;
@@ -187,6 +217,57 @@ export interface LoginPrompt {
   placeholder?: string;
   inputType?: 'text' | 'number' | 'password';
   submitLabel?: string;
+  /**
+   * 预设选项。**有它时前端渲染按钮让用户点选**，不要求用户打字。
+   * 典型场景：豆包登录要选「短信验证码 / 导入 cookie」——让用户输 `1` 或 `2` 是反人类的。
+   */
+  options?: LoginPromptOption[];
+  /**
+   * 要用户完成一次验证（图形验证码）。**有它时前端嵌 iframe 显示验证页**，
+   * 用户做完点「已完成」回填 `'done'`。
+   *
+   * 数据来自上游响应的 `verify_center_decision_conf`（豆包 1105 风控）。
+   */
+  challenge?: LoginPromptChallenge;
+  /**
+   * 二维码图片（data URI）。**有它时前端渲染成图片**，用户用已登录的 App 扫。
+   * 典型场景：豆包 2046 的 `qr_code_verify`——上游给 base64，网关不用存文件。
+   */
+  qrCode?: string;
+  /**
+   * 要用户填一位数验证码（OTP）。**有它时前端渲染大格子输入框**。
+   *
+   * 和普通的 `inputType: 'number'` 不同：OTP 是「从别处看一位数字回来填」，
+   * 视觉上要显眼，而且长度固定。目前只有豆包 2046 的 `push_verify` 用它。
+   */
+  otpLength?: number;
+  /**
+   * 短信验证要的三段信息。**结构化传下去，别塞进 `label` 里**——
+   * 号码、正文、被验证手机号挤成一句话，用户复制时很容易抄错。
+   */
+  sms?: LoginPromptSms;
+}
+
+/** 短信验证（豆包 2046 的 `mobile_up_sms_verify`）要显示的东西。 */
+export interface LoginPromptSms {
+  /** 要发到的号码，如 `10691859839103`。 */
+  channelMobile: string;
+  /** 短信正文，如 `YZ`。 */
+  content: string;
+  /** 被验证的手机号（脱敏），如 `155******33`。可能为空。 */
+  mobile: string;
+}
+
+/** 让用户做一次验证时交给前端的材料。 */
+export interface LoginPromptChallenge {
+  /** 验证页地址，直接嵌 iframe。 */
+  url: string;
+  /** 挑战码（`decision_conf.detail`），作为 `challenge_code` 传给验证页。 */
+  code: string;
+  /** 验证类型：slide / 3d / text / icon / whirl / semantic_reasoning。 */
+  subtype: string;
+  /** 验证票据。 */
+  ticket: string;
 }
 
 export interface LoginResult {
@@ -207,6 +288,12 @@ export interface Channel {
 
   /** 能不能挂多个账号，默认 `true`。设成 `false` 时账号层会拦住第二个号。 */
   multiAccount?: boolean;
+
+  /**
+   * 登录形态，默认 `url`。设成 `form` 时前端**不会**在点击「添加」时开空白窗——
+   * 表单式登录（短信验证码 / 粘贴 cookie）不产生授权地址，开了就是空白标签页。
+   */
+  loginMode?: LoginMode;
 
   /** 上游会不会在响应里报 token 用量，默认 `true`。`false` 时账本恒为 0，界面要显示 `—`——0 会被读成「用过但没消耗」。 */
   reportsTokens?: boolean;

@@ -70,6 +70,11 @@ export interface ChannelCapability {
   canVerify: boolean;
   canCheckin: boolean;
   /**
+   * 登录要不要先开空白窗接授权页。
+   * `false` = 表单式（短信验证码 / 粘贴 cookie），开了只会留一个白屏标签页。
+   */
+  opensWindow: boolean;
+  /**
    * 上游会不会报 token 用量。`false` 时这个通道的账号在账本里恒为 0，
    * 界面要显示 `—` 并说明「该通道不提供」——**0 会被读成「用过但没消耗」**。
    * 目前只有 Qoder 是 `false`。
@@ -89,14 +94,55 @@ export function getAccounts(): Promise<AccountsResponse> {
 
 /* ------------------------------ 登录任务 ------------------------------ */
 
-/** 表单式登录（Loomy 短信验证码）当前要用户填的一步。 */
-interface LoginPrompt {
+/** 有 `options` 的 prompt 前端渲染成按钮，让用户点选而不是打字。 */
+export interface LoginPromptOption {
+  value: string;
+  label: string;
+  hint?: string;
+  /** 头像 URL（账号选择用）。有它就渲染成带头像的卡片。 */
+  avatar?: string;
+  /** 第二行副标题，比如租户名。 */
+  subtitle?: string;
+  /**
+   * 这一项选不了。**仍然显示**，只是灰掉——用户得知道上游给了哪些方式，
+   * 不然会以为网关漏了。典型：豆包 2046 的 `oauth_douyin_verify`（要跳抖音授权）。
+   */
+  disabled?: boolean;
+}
+
+/** 表单式登录（Loomy / 豆包的短信验证码）当前要用户填的一步。 */
+export interface LoginPrompt {
   /** 一次登录里可能有多个 prompt（手机号 → 验证码），按 id 去重。 */
   id: string;
   label: string;
   placeholder?: string;
   inputType?: 'text' | 'number' | 'password';
   submitLabel?: string;
+  /** 预设选项。有它就渲染按钮组。 */
+  options?: LoginPromptOption[];
+  /** 要用户完成一次验证。有它就嵌 iframe 显示验证页。 */
+  challenge?: LoginPromptChallenge;
+  /** 二维码地址（data URI 或远程图片）。有它就渲染成图片让用户用已登录的 App 扫。 */
+  qrCode?: string;
+  /** 要用户填 OTP 验证码时给位数。有它就渲染大格子输入框。 */
+  otpLength?: number;
+  /** 短信验证要的三段信息（号码 / 正文 / 被验证手机号）。 */
+  sms?: LoginPromptSms;
+}
+
+/** 短信验证要显示的三段信息。 */
+export interface LoginPromptSms {
+  channelMobile: string;
+  content: string;
+  mobile: string;
+}
+
+/** 让用户做一次验证的材料（上游 verify_center_decision_conf）。 */
+export interface LoginPromptChallenge {
+  url: string;
+  code: string;
+  subtype: string;
+  ticket: string;
 }
 
 export interface LoginTask {
@@ -111,6 +157,29 @@ export interface LoginTask {
   startedAt: number;
   finishedAt: number | null;
   accountId: string | null;
+  /**
+   * 上游要求完成的验证（图形验证码）。有它就在弹窗里嵌验证页让用户点。
+   * **为 null 不代表没风控**：豆包 2046 走的是登录流程里的 `prompt`（带二维码/短信号码），
+   * 不是这里的 challenge。
+   */
+  challenge: LoginChallenge | null;
+}
+
+/**
+ * 上游出的验证题。数据来自响应的 `verify_center_decision_conf`，
+ * **不是**顶层 `captcha` 字段（那个一直是空的）。
+ */
+export interface LoginChallenge {
+  /** 验证页地址，直接嵌 iframe。 */
+  url: string;
+  /** 挑战码（`decision_conf.detail`），作为 `challenge_code` 传给验证页。 */
+  code: string;
+  /** 验证类型：slide / 3d / text / icon / whirl / semantic_reasoning。 */
+  subtype: string;
+  /** 验证票据，验证通过后带回原请求。 */
+  ticket: string;
+  /** 触发这次验证的上游事件。 */
+  event: string;
 }
 
 export function startLogin(channelId: string): Promise<{ ok: true; task: LoginTask }> {

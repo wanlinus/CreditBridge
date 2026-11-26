@@ -110,6 +110,7 @@
   | 签到调度 / 重试阶梯 | `test:checkin-scheduler` |
   | 签到开关 | `test:checkin-switch` |
   | 路由边界 / `/v1/*` 只认 Bearer | `test:routes` |
+  | 豆包风控码判定 | `test:doubao` |
   | 前端页面 / 静态资源 | `test:http` + `npm run check:web` |
 
   **这几套钉的都是「不会报错、只会让数字悄悄错」的地方**（细节在各自文件头注释里）：
@@ -145,9 +146,11 @@
 - **`data/config.json` 只管四项**：`checkinTime` / `defaultContextWindow` / `defaultMaxTokens` / `verbose`（`config.ts` 的 `FILE_KEYS`）。**`host` / `port` 不在其中**——那两个只认 `QB_HOST` / `QB_PORT` 环境变量，理由见下条。文件里如果还留着这两个键会被忽略，`mutateConfig()` 写回时也会删掉它们。
 - **容器部署靠环境变量，不靠改 `data/config.json`**：那个文件在卷里、镜像无法预设，别人拉镜像后也不会去改它。所以 `host` / `port` 支持 `QB_HOST` / `QB_PORT` 覆盖（`config.ts` 的 `loadConfig()`），`compose.yaml` 里显式给 `QB_HOST=0.0.0.0`。优先级：**环境变量 > config.json > 默认值**。Trae 登录的三个 `QB_TRAE_*` 同理。
 - **`deploy.ps1` 必须把 `compose.yaml` 整个传过去，不能只 patch 镜像行**：2026-11-25 踩过——脚本原来只 `sed` 改 image，于是给 compose 加的 `QB_HOST` **根本没到服务器**，容器监听 `127.0.0.1`、端口映射全断，而 `docker ps` 仍显示 healthy。现在流程是：`scp compose.yaml` → 远端 `docker compose config --quiet` 校验 → 通过才替换并更新镜像行 → `pull` + `up -d`。**服务器上的 compose 必须和仓库里逐字节一致**，否则「我这边好好的、别人那边不行」会反复出现。
-- **版本号自动跟进上游**：每个通道实现 `Channel.fetchIdentity()` 就去官网查最新版本（四家接口见 `private/docs/protocols/README.md`），存 `channel_version` 表，**和签到同一个定时任务里每天刷一次**。启动时 `applyCachedIdentities()` 用库里的值覆盖代码默认值。**代码里的默认值只在库为空时生效**，所以改上游协议时两个地方都要更新。
+- **版本号自动跟进上游**：每个通道实现 `Channel.fetchIdentity()` 就去官网查最新版本（各家接口见 `private/docs/protocols/README.md`），存 `channel_version` 表，**和签到同一个定时任务里每天刷一次**。启动时 `applyCachedIdentities()` 用库里的值覆盖代码默认值。**代码里的默认值只在库为空时生效**，所以改上游协议时两个地方都要更新。
 - **`identity` 在 `configure()` 之前就要定好**：`configure` 会把 `identity` 转发给各通道模块（`configureTraeIdentity` / `configureWorkBuddy`），之后改就晚了。运行中也不热改——同一进程里带不同版本号会让上游看到的指纹混乱。改版本号靠重启（几十毫秒）。
-- **不再有「本地构建 + scp」的路径**：`deploy.ps1` 原来会 `docker build` → `save` + gzip → scp → `load`，165 行里有 4 个坑（双重 tar、BOM、CRLF、`docker info --format`）。换成拉镜像之后这些都不存在了，脚本 90 行。**想测未提交的代码就本地 `npm start`**，不要为了试改动去改部署链路。
+- **不再有「本地构建 + scp」的路径**：`deploy.ps1` 原来会 `docker build` → `save` + gzip → scp → `load`，165 行里有 4 个坑（双重 tar、BOM、CRLF、`docker info --format`）。换成拉镜像之后这些都不存在了，脚本 90 行。
+- **不要在本地起网关验证功能**（2026-11-26 用户明确要求）。写完代码直接 `deploy-test.ps1` 推到 `cb-test`，在 `http://<server>:7811` 上验。本地起进程的代价：端口和测试环境撞、用户浏览器连的是服务器、验证完还得记得关，而且 `data/` 会被本地跑脏。
+  例外只有一种：**纯离线单元测试**（`npm test` / `npm run check`），那些不起服务。
 - **测未发布的镜像用 `~/docker/cb-test/`，不要动生产**：服务器上两个环境并存，完全隔离：
 
   | | 生产 `~/docker/cb-gateway/` | 测试 `~/docker/cb-test/` |
@@ -156,14 +159,10 @@
   | 端口 | 7801 / 18801 | **7811 / 18811** |
   | `data/` | 真实账本和凭据 | **独立空库** |
 
-  验证未发布代码的流程：
+  验证未发布代码的流程：写完 → `.\cb-gateway\scripts\deploy-test.ps1 -Server <地址>` → 开 `http://<server>:7811` 验。
 
-  ```powershell
-  .\cb-gateway\scripts\deploy-test.ps1 -Server <地址>     # 构建 + 上传 + 起 cb-test（端口 7811）
-  .\cb-gateway\scripts\reset-test.ps1  -Server <地址>     # 测完切回 GHCR 镜像
-  ```
-
-  **测完必须 `reset-test.ps1`**，否则测试 compose 里留着本地 tag，下次 `docker compose pull` 会 `pull access denied`（2026-11-25 踩过两次）。
+  **功能开发期间保持 `cb-test` 跑着 `cb-gateway:cbtest`，不要 `reset-test`**（2026-11-26 踩过：部署完顺手 reset 了，用户正在用的环境一下退回旧镜像，界面上少了刚做的通道，看起来像功能没做）。
+  `reset-test.ps1` 只在**明确收工、要切回发布镜像**时用；否则留着本地 tag 的代价只是「下次 `docker compose pull` 前先 reset」，比让人看到旧界面便宜得多（2026-11-25 那次 `pull access denied` 是另一回事，那时是在切发布镜像的当下）。
 
   **想让测试环境跑真实数据**：`.\cb-gateway\scripts\copy-data-to-test.ps1 -Server <地址>`。它用 `VACUUM INTO` 做快照，**不能直接 `cp gateway.db`**——SQLite 在 WAL 模式下 WAL 可能比主库还大（实测 1.8M 主库 vs 4.0M WAL），只拷 `.db` 会静默丢掉未 checkpoint 的数据，账本看起来莫名少了。生产侧只读。
 - **Dockerfile 是多阶段构建**（2026-11-25 改）：`web` 阶段用 pnpm 编译前端，`COPY --from=web` 拿产物。所以 `docker build .` 一步到位，不依赖本机先跑 `build:web`。改 Dockerfile 时注意两点：① 前端产物来自 `--from=web` 的 `/build/dist`，不是 `COPY web/dist`；② `web/package.json` 的 `packageManager` 字段决定 CI 用哪个 pnpm 版本，改它等于改 CI。
@@ -173,6 +172,13 @@
 
 ## 平台坑（Windows）
 
+- **逆向探针连国内上游一律直连，不要套代理。** 本机 Clash 的 TUN 会把 `0.0.0.0/0` 接走，
+  给 `fetch` 设 `HTTPS_PROXY` 就等于让请求从海外节点出口。2026-11-25 抓豆包时全程套了
+  `127.0.0.1:7897`（出口从本地联通变成新加坡 AWS），十几次对话请求之后
+  上游直接要真人校验——`error_code 710022004` 的 `error_msg` 写的是 `rate limited`，
+  但 `decision` 里是 `from: shark_admin` / `type: verify`，**风控不是限流**。
+  上游服务端在 `inner_user_ip` 里回报的来源 IP 就是排查入口，它和原生客户端不一致时才叫可疑。
+  需要走代理的只有 GitHub / npm registry 这类境外资源。
 - **网关不打开浏览器。** 它是无头服务：部署到容器/服务器时那台机器没有浏览器，而有浏览器的那台通常是用户自己的。登录流程只把地址交出去（`onUrl` 回调 + 控制台），由调用方打开（面板造 `<a target="_blank">` 交给系统浏览器）。2026-11 之前 `openBrowser()` 在网关里用 `cmd /c start` / `xdg-open` 拉浏览器，容器里 `spawn xdg-open ENOENT` 的未捕获 `'error'` 直接把进程打崩——这就是整个模块被删掉的原因。
   - 历史坑（如果以后又有代码要开浏览器）：`cmd /c start "" <url>` 里未加引号的 `&` 会被当成命令分隔符；`start` 的第一个带引号参数是窗口标题，而空字符串在 `windowsVerbatimArguments` 下会消失。
 - **`git commit -m "..."` 里的 `&` 同样会被 PowerShell 截断**，提交信息里含 `&`、引号或多行时写成文件用 `git commit -F`。

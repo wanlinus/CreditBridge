@@ -33,18 +33,44 @@ function check(name, actual, expected = true) {
   }
 }
 
-/** 本地日历日的 `YYYY-MM-DD`。 */
-const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/**
+ * 北京时间的日历日 `YYYY-MM-DD`。
+ *
+ * **测试必须和被测代码同一个时区口径**：账本按北京时间分日分桶，
+ * 用 `getFullYear()/getDate()` 那些本地方法构造数据，在 CI（`TZ=UTC`）下
+ * 会比北京早 8 小时，断言全错位。2026-11-26 就是这么在 CI 上红了 13 项。
+ */
+const dayKey = (d) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const pick = (t) => parts.find((p) => p.type === t)?.value ?? '';
+  return `${pick('year')}-${pick('month')}-${pick('day')}`;
+};
+
+/** 北京时间的「今天」往前推 n 天，取那天 0 点（毫秒）。 */
+function beijingMidnightDaysAgo(days) {
+  const today = dayKey(new Date());
+  const [y, m, d] = today.split('-').map(Number);
+  const shifted = new Date(Date.UTC(y, m - 1, d - days));
+  const key = `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`;
+  return new Date(`${key}T00:00:00+08:00`).getTime();
+}
 
 // 用「3 天前」而不是今天：今天的未来小时是空的，边界断言会变得看运行时刻。
-const target = new Date();
-target.setDate(target.getDate() - 3);
-target.setHours(0, 0, 0, 0);
-const TARGET_KEY = dayKey(target);
-const at = (hour, minute = 30) => target.getTime() + hour * 3600000 + minute * 60000;
+const TARGET_START = beijingMidnightDaysAgo(3);
+const TARGET_DAY = new Date(TARGET_START + 8 * 3600000); // 只为读 getUTCDay，见 isPeakAt
+const TARGET_KEY = dayKey(new Date(TARGET_START));
+const at = (hour, minute = 30) => TARGET_START + hour * 3600000 + minute * 60000;
 
-/** 独立复述一遍峰谷规则：工作日 9-12、14-18。 */
-const isPeakAt = (day, hour) => day.getDay() >= 1 && day.getDay() <= 5 && ((hour >= 9 && hour < 12) || (hour >= 14 && hour < 18));
+/** 独立复述一遍峰谷规则：工作日 9-12、14-18。星期几按北京时间取。 */
+const isPeakAt = (_day, hour) => {
+  const wd = TARGET_DAY.getUTCDay();
+  return wd >= 1 && wd <= 5 && ((hour >= 9 && hour < 12) || (hour >= 14 && hour < 18));
+};
 
 const rows = [
   // 目标日：0 点、9 点、12 点整后（边界外）、23 点
@@ -63,8 +89,8 @@ console.log('--- 1. 形状 ---');
 check('hours 恒 24 项', day.hours.length, 24);
 check('hour 是 0..23 升序', day.hours.map((h) => h.hour), Array.from({ length: 24 }, (_, i) => i));
 check('date 原样回显', day.date, TARGET_KEY);
-check('weekday 与本地一致', day.weekday, target.getDay());
-check('isPeakDay 跟着星期几', day.isPeakDay, target.getDay() >= 1 && target.getDay() <= 5);
+check('weekday 与本地一致', day.weekday, TARGET_DAY.getUTCDay());
+check('isPeakDay 跟着星期几', day.isPeakDay, TARGET_DAY.getUTCDay() >= 1 && TARGET_DAY.getUTCDay() <= 5);
 
 console.log('\n--- 2. 记录落在自己的小时里 ---');
 check('0 点那一格', [day.hours[0].requests, day.hours[0].tokens], [1, 1010]);
@@ -77,10 +103,10 @@ check('前一天那条的 token 没混进来', day.totals.tokens, 1010 + 2020 + 
 check('cachedTokens 单独汇总', day.totals.cachedTokens, 900);
 
 console.log('\n--- 3. 费用按每条记录自己的时刻分峰谷 ---');
-check('9 点的 peak 标记与本地规则一致', day.hours[9].peak, isPeakAt(target, 9));
+check('9 点的 peak 标记与本地规则一致', day.hours[9].peak, isPeakAt(TARGET_DAY, 9));
 check('23 点永远不是峰时', day.hours[23].peak, false);
 check('23 点的费用全算在空闲档', [day.hours[23].cost.peakCny, day.hours[23].cost.offPeakCny > 0], [0, true]);
-if (isPeakAt(target, 9)) {
+if (isPeakAt(TARGET_DAY, 9)) {
   check('工作日 9 点的费用全算在高峰档', [day.hours[9].cost.peakCny > 0, day.hours[9].cost.offPeakCny], [true, 0]);
 } else {
   check('非工作日 9 点不按高峰计价', [day.hours[9].cost.peakCny, day.hours[9].cost.offPeakCny > 0], [0, true]);
@@ -112,7 +138,7 @@ tomorrow.setDate(tomorrow.getDate() + 1);
 check('未来的日子被拒', throws(() => usageHourly(dayKey(tomorrow))).includes('未来'));
 
 console.log('\n--- 6. 空数据的某一天 ---');
-const emptyDay = new Date(target.getTime() - 10 * 86400000);
+const emptyDay = new Date(TARGET_START - 10 * 86400000);
 const empty = usageHourly(dayKey(emptyDay));
 check('没有记录的那天也回 24 项', empty.hours.length, 24);
 check('那天全 0，不是报错', [empty.totals.requests, empty.totals.tokens, empty.totals.cost.cny], [0, 0, 0]);
@@ -130,14 +156,14 @@ insertUsage({ ts: at(15), provider: 'workbuddy', account: 'wb-9', model: 'w', cr
 const withEstimate = usageHourly(TARGET_KEY);
 // 实测率不能写死：这个 fixture 里还有其他 WB 行参与加权。**按同一份数据自己算一遍**，
 // 断言的才是「推算 = prompt × 实测率」这条规则，而不是某个魔法数字。
-const rate = measuredCacheHitRate(usagePricingRows({}, target.getTime(), target.getTime() + 86400000));
+const rate = measuredCacheHitRate(usagePricingRows({}, TARGET_START, TARGET_START + 86400000));
 const expectedAssumed = Math.floor(100000 * rate);
 check('实测率算得出来', typeof rate, 'number');
 check('Trae 的输入按实测率推算', withEstimate.totals.cost.assumedCachedTokens, expectedAssumed);
 // 15 点是峰时（工作日才峰；周末则全是空闲价），两种情况的金额不同，所以按桶判
 const hour15 = withEstimate.hours[15];
-const priceHit = isPeakAt(target, 15) ? 0.04 : 0.02;
-const priceMiss = isPeakAt(target, 15) ? 2 : 1;
+const priceHit = isPeakAt(TARGET_DAY, 15) ? 0.04 : 0.02;
+const priceMiss = isPeakAt(TARGET_DAY, 15) ? 2 : 1;
 // Trae：推算命中 + 其余未命中；WB：90K 命中 + 10K 未命中
 const expectedCny =
   (expectedAssumed / 1e6) * priceHit + ((100000 - expectedAssumed) / 1e6) * priceMiss + (90000 / 1e6) * priceHit + (10000 / 1e6) * priceMiss;

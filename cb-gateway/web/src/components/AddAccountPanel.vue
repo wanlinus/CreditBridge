@@ -43,6 +43,17 @@ const options = computed(() => props.channels.filter((channel) => channel.canLog
 
 const selected = ref<string>(options.value.find((channel) => !blocked(channel))?.id ?? '');
 
+/**
+ * 顶栏提示。**按选中通道自述的 `opensWindow` 说话**：
+ * URL 式登录会开新标签页去授权，表单式（短信/cookie）不会——提示必须跟得上，
+ * 否则用户点完发现没开窗会以为坏了。
+ */
+const hintText = computed(() => {
+  const channel = options.value.find((item) => item.id === selected.value);
+  if (channel?.opensWindow === false) return '选一个平台，会在弹窗里完成登录';
+  return '选一个平台，会打开新标签页去授权';
+});
+
 function hint(channel: ChannelCapability): string {
   if (blocked(channel)) return `只支持一个账号，已有 ${countOf(channel.id)} 个；换号用那行的「重新登录」`;
   if (!channel.multiAccount) return '只支持一个账号';
@@ -54,7 +65,7 @@ function hint(channel: ChannelCapability): string {
   <div class="panel add-account">
     <div class="head">
       <span class="title">添加账号</span>
-      <span class="muted">选一个平台，会打开新标签页去授权</span>
+      <span class="muted">{{ hintText }}</span>
       <span class="grow" />
       <button type="button" class="btn sm ghost" @click="emit('close')">取消</button>
     </div>

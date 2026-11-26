@@ -18,7 +18,7 @@
  * 轮询到授权链接 → 把链接填进那个窗口 → 后台等完成 → 刷新列表。
  * 细节和坑都在 `composables/useLoginTask.ts` 与 `LoginTaskPanel.vue` 的注释里。
  */
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { getAccounts, refreshAccountCredits, refreshChannelCredits, type CreditRefreshRow } from '@/api/accounts';
@@ -189,13 +189,6 @@ function rememberTask(channelId: string, taskId: string): void {
   void router.replace({ query: { ...route.query, channel: channelId, task: taskId } });
 }
 
-/** 面板在页面顶部，而「重新登录」可能在某个通道行里——把它滚进视野，别让人以为没反应。 */
-const taskAnchor = ref<HTMLElement | null>(null);
-
-function revealTask(): void {
-  void nextTick(() => taskAnchor.value?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
-}
-
 /**
  * 起一次登录。
  *
@@ -205,12 +198,19 @@ function revealTask(): void {
 async function startLogin(channelId: string): Promise<void> {
   adding.value = false;
   actionError.value = null;
-  pendingWindow = window.open('about:blank', '_blank');
-  pendingWindowUsed = false;
+
+  // **只有 URL 式登录才开窗**：授权页必须借这次点击的手势先开好空白窗，否则被弹窗拦截。
+  // 表单式（短信验证码 / 粘贴 cookie）不产生授权地址，开了就是一个永远白着的标签页——
+  // 豆包和 Loomy 都会中这个。用通道自述的 `opensWindow` 判断，不按通道 id 分支。
+  const channel = channelList.value.find((item) => item.id === channelId);
+  if (channel?.opensWindow !== false) {
+    pendingWindow = window.open('about:blank', '_blank');
+    pendingWindowUsed = false;
+  }
+
   try {
     const created = await login.start(channelId);
     rememberTask(channelId, created.taskId);
-    revealTask();
   } catch (error) {
     closeUnusedWindow();
     actionError.value = errorText(error);
@@ -323,8 +323,6 @@ onMounted(() => {
       @start="startLogin"
       @close="adding = false"
     />
-
-    <div ref="taskAnchor" />
 
     <LoginTaskPanel
       v-if="task"

@@ -50,3 +50,6 @@ loomy-recon/
 *.msg.txt
 .rename-*.mjs
 .move-gateway.ps1
+
+# 提交信息临时文件
+.commitmsg.txt

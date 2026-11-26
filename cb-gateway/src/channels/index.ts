@@ -7,9 +7,10 @@ import { workbuddyChannel } from './workbuddy/index.ts';
 import { traeChannel } from './trae/index.ts';
 import { qoderChannel } from './qoder/index.ts';
 import { loomyChannel } from './loomy/index.ts';
+import { doubaoChannel } from './doubao/index.ts';
 
 /** 显示顺序就是这里的顺序：WorkBuddy 在前，和面板一贯的排法一致。 */
-export const channels: Channel[] = [workbuddyChannel, traeChannel, qoderChannel, loomyChannel];
+export const channels: Channel[] = [workbuddyChannel, traeChannel, qoderChannel, loomyChannel, doubaoChannel];
 
 // 撞车不会抛异常，只会让一批请求静默走错上游（花错钱、进错账），所以在模块加载时就检查。
 const owners = new Map<string, Channel>();

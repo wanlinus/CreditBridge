@@ -2,6 +2,7 @@
 // 2026-11-22 曾拆成 `ledger/` 下 4 个文件又合回来（拆完 record.ts 只剩 35 行代码）；文件长是因为注释，不是逻辑复杂。
 // 三段职责：写入口 `recordChatUsage` · 汇总 `usageSummary` · 单日 `usageHourly`（`pricingRows` 两条读路径共用）。
 import { log } from './logger.ts';
+import { beijingHour, beijingToday, beijingWeekday } from './shared/clock.ts';
 import {
   CACHE_ESTIMATE_FALLBACK_RATE,
   CACHE_ESTIMATED_PROVIDERS,
@@ -312,12 +313,22 @@ export interface HourlyBucket {
   peak: boolean;
 }
 
-/** 解析 `YYYY-MM-DD` 成本地日历日 0 点（毫秒）。**必须回读比对**：`new Date('2026-02-30T00:00:00')` 不报错、会进位成 3 月 2 日，不回读就把「不存在的日期」算成真实的日子。 */
+/**
+ * 解析 `YYYY-MM-DD` 成**北京时间**那一天的 0 点（毫秒）。
+ *
+ * **不能用 `new Date('2026-11-23T00:00:00')`**：那是进程本地时区，CI（UTC）下会比
+ * 北京时间早 8 小时，和 SQL 里 `+8 hours` 的分日对不上。这里显式按 `+08:00` 解析。
+ *
+ * **必须回读比对**：`new Date('2026-02-30T00:00:00')` 不报错、会进位成 3 月 2 日，
+ * 不回读就把「不存在的日期」算成真实的日子。
+ */
 function startOfLocalDate(date: string): number {
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(date)) throw new Error('date 要是 YYYY-MM-DD');
-  const parsed = new Date(`${date}T00:00:00`);
+  const parsed = new Date(`${date}T00:00:00+08:00`);
   if (Number.isNaN(parsed.getTime())) throw new Error(`${date} 不是合法日期`);
-  const roundTrip = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+  // 回读时也按北京时间取年月日，否则 UTC 下会退到前一天。
+  const back = new Date(parsed.getTime() + 8 * 3600000);
+  const roundTrip = `${back.getUTCFullYear()}-${String(back.getUTCMonth() + 1).padStart(2, '0')}-${String(back.getUTCDate()).padStart(2, '0')}`;
   if (roundTrip !== date) throw new Error(`${date} 不是合法日期`);
   return parsed.getTime();
 }
@@ -333,11 +344,9 @@ export function usageHourly(
   options: { provider?: string | null; account?: string | null } = {},
 ) {
   const start = startOfLocalDate(date);
-  const todayStart = (() => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    return now.getTime();
-  })();
+  // 「今天」也按北京时间算，和 `startOfLocalDate` 同一口径——用本地 `setHours(0,0,0,0)`
+  // 在 UTC 下会让「今天」提前 8 小时，凌晨查当天的用量会被误判成未来。
+  const todayStart = startOfLocalDate(beijingToday());
   if (start > todayStart) throw new Error(`${date} 还没到，不能查未来的用量`);
 
   const filter = { provider: options.provider || null, account: options.account || null };
@@ -352,7 +361,10 @@ export function usageHourly(
   const costRows = costWindow.rows;
   const rowsByHour = new Map<number, typeof costRows>();
   for (const row of costRows) {
-    const hour = new Date(row.ts).getHours();
+    // **按北京时间分桶**，不能用 `getHours()`：那是进程本地时区。
+    // 2026-11-26 踩过：CI 是 UTC，北京时间 15:30 的记录被分到 7 点，
+    // 而 `isPeakHour()` 判它是高峰——两边矛盾，`usage-hourly` 测试红了一项。
+    const hour = beijingHour(row.ts);
     const list = rowsByHour.get(hour);
     if (list) list.push(row);
     else rowsByHour.set(hour, [row]);
@@ -384,10 +396,10 @@ export function usageHourly(
 
   return {
     date,
-    /** 0 = 周日 … 6 = 周六。 */
-    weekday: new Date(start).getDay(),
+    /** 0 = 周日 … 6 = 周六。**按北京时间**，和峰谷规则同一个口径。 */
+    weekday: beijingWeekday(start),
     /** 这一天有没有峰时段（工作日才有）。界面用它决定要不要画峰谷底色。 */
-    isPeakDay: [1, 2, 3, 4, 5].includes(new Date(start).getDay()),
+    isPeakDay: [1, 2, 3, 4, 5].includes(beijingWeekday(start)),
     hours,
     totals: {
       requests: sum((b) => b.requests),

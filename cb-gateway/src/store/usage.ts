@@ -244,14 +244,15 @@ export function usageProvidersWithoutCredit(filter: UsageFilter = {}, since?: nu
  * **按 `MIN(id)` 排序**（= 首次出现的顺序）：`GROUP BY` 本身按分组键排，而旧实现是 Map 的
  * 插入顺序，两者在 token 相同的行上会排出不同结果，让「逐位比对旧数据」做不下去。
  *
- * `date(ts / 1000, 'unixepoch', 'localtime')` **依赖容器的 `TZ`**：`Dockerfile` 和
- * `compose.yaml` 都设了 `Asia/Shanghai`。丢了会让分桶整体偏一天，而且不报错。
+ * **显式 `+8 hours` 而不是 `'localtime'`**：日界按北京时间算，不该依赖进程 `TZ`。
+ * 2026-11-26 踩过——CI 是 UTC、生产容器是 `Asia/Shanghai`，用 `'localtime'` 两边
+ * 分桶会差一天。上海没有夏令时，`+8` 是恒定的。
  */
 export function usageDailyGroups(filter: UsageFilter = {}, since: number): UsageDailyGroup[] {
   const { sql, params } = whereOf(filter, since);
   const rows = db
     .prepare(
-      `SELECT date(ts / 1000, 'unixepoch', 'localtime')                     AS day,
+      `SELECT date(ts / 1000, 'unixepoch', '+8 hours')                      AS day,
               model, account, provider,
               COUNT(*)                                                      AS requests,
               COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0) AS tokens,
@@ -424,10 +425,12 @@ export function usageAccountToday(
 }
 
 /**
- * 按**本地小时**分组（单日 24 小时视图用），`strftime('%H', …)` 返回零填充的 `00`–`23`。
+ * 按**北京时间的小时**分组（单日 24 小时视图用），`strftime('%H', …)` 返回零填充的 `00`–`23`。
  *
- * **依赖容器 `TZ=Asia/Shanghai`**：上海没有夏令时，一天恒 24 小时。部署到有 DST 的时区那天
- * 会是 23 或 25 个桶，多出来的会被丢掉。
+ * **显式 `+8 hours` 而不是 `'localtime'`**：峰谷计价是业务规则（按北京时间），
+ * 不该依赖进程 `TZ`。2026-11-26 踩过——CI 是 UTC、生产容器是 `Asia/Shanghai`，
+ * 用 `'localtime'` 两边算出不同的小时，`usage-hourly` 测试在 CI 上红了一项。
+ * 上海没有夏令时，`+8` 是恒定的。
  */
 export function usageHourlyGroups(
   filter: UsageFilter,
@@ -437,7 +440,7 @@ export function usageHourlyGroups(
   const { sql, params } = whereOf(filter, since, until);
   const rows = db
     .prepare(
-      `SELECT strftime('%H', ts / 1000, 'unixepoch', 'localtime')            AS hour,
+      `SELECT strftime('%H', ts / 1000, 'unixepoch', '+8 hours')            AS hour,
               COUNT(*)                                                      AS requests,
               COALESCE(SUM(COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0)), 0) AS tokens,
               COALESCE(SUM(COALESCE(prompt_tokens, 0)), 0)                  AS prompt_tokens,

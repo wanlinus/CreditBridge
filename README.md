@@ -1,6 +1,6 @@
 # CreditBridge（积分桥）
 
-把 4 个平台（WorkBuddy / Trae CN / Qoder / Loomy）的积分，转成**标准 OpenAI 接口**，
+把 5 个平台（WorkBuddy / Trae CN / Qoder / Loomy / 豆包）的积分，转成**标准 OpenAI 接口**，
 给 DSH 或任何 OpenAI 兼容客户端用。
 
 ```
@@ -8,10 +8,10 @@
                               （花指定账号的积分）
 ```
 
-它做两件事：**统一协议**（四家私有接口 → 一个 `/v1/chat/completions`）、
+它做两件事：**统一协议**（五家私有接口 → 一个 `/v1/chat/completions`）、
 **统一账号**（一个平台挂多个号，用哪个号由模型 id 指定）。
 
-> ⚠️ 四个通道走的都是客户端**私有接口**，不是官方开放 API。是否违反各自服务条款请自行判断，
+> ⚠️ 五个通道走的都是客户端**私有接口**，不是官方开放 API。是否违反各自服务条款请自行判断，
 > 账号被限、额度被清的风险自担。详见[风险声明](#风险声明)。
 
 ---
@@ -21,7 +21,7 @@
 ### 你需要什么
 
 - **Docker**（网关以镜像方式分发，不用装 Node）
-- 四个平台各自的账号（有一个就能用）
+- 五个平台各自的账号（有一个就能用）
 
 ### 第一步：起网关
 
@@ -75,7 +75,7 @@ docker run -d --name cb-gateway -p 7801:7801 -v "$PWD/cb-data:/app/data" ghcr.io
 
 进 `/accounts` 页 → 选通道 → 点「开始登录」→ 按提示在浏览器完成授权。
 
-每个号登一次，就多一套模型 id。四个通道都支持多账号。
+每个号登一次，就多一套模型 id。五个通道都支持多账号。
 
 ### 第五步：用起来
 
@@ -143,11 +143,11 @@ curl http://127.0.0.1:7801/v1/chat/completions \
 
 - **token 是上游报的数**，网关不自己数（各家 tokenizer 不同，自己数对不上账单）
 - **积分只读官方余额**，不做逐请求结算
-- **折合费用是参照系，不是账单**——这些 token 花在四家上游，不走 DeepSeek 的 API
+- **折合费用是参照系，不是账单**——这些 token 花在五家上游，不走 DeepSeek 的 API
 
 ---
 
-## 四个通道
+## 五个通道
 
 | 通道 | idPrefix | 上游 | 模型来源 |
 |---|---|---|---|
@@ -155,8 +155,14 @@ curl http://127.0.0.1:7801/v1/chat/completions \
 | **Trae CN** `trae` | `tr` | `trae-api-cn.mchost.guru` | 服务端配置 `batch_get_detail_param` |
 | **Qoder** `qoder` | `qd` | `openapi.qoder.com.cn` | 上游 `/algo/api/v2/model/list` |
 | **Loomy** `loomy` | `lo` | `loomyad.xunfei.cn` | 上游 `/api/v1/models` |
+| **豆包** `doubao` | `db` | `www.doubao.com` | 上游 `/alice/slot/action_bar_v3/brief_list` |
 
-四个都是纯 HTTP，没有子进程。
+五个都是纯 HTTP，没有子进程。
+
+**豆包有两个特殊之处**：它的**不报 token 用量**（对话的 SSE 里没有任何计数字段），
+所以它的账号在概览页上只有余额、没有用量数字。登录支持**短信验证码**
+（单账号可全自助）和**导入 cookie**；手机号绑了多个豆包号时必须用 cookie ——
+选号那步被上游风控拦住，这是实测边界。**豆包对话还有独立风控**，高频请求会要求真人验证。
 
 ---
 
@@ -264,7 +270,7 @@ CreditBridge/
 │  │  ├─ index.ts app.ts         启动 / Hono 实例
 │  │  ├─ routes/                 openai · admin · accounts · keys · json-actions
 │  │  ├─ core/                   accounts · router · credits · keys · checkin-scheduler
-│  │  ├─ channels/               types.ts 契约 + 4 个通道
+│  │  ├─ channels/               types.ts 契约 + 5 个通道
 │  │  ├─ auth/                   认证闸 + 强制改密闸
 │  │  └─ shared/                 paths · sse · 定价 · 可见性 · 网关凭据
 │  ├─ web/                      前端 SPA（Vue 3 + Vite）

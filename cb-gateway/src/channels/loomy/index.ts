@@ -20,6 +20,9 @@ export const loomyChannel = defineChannel({
   idPrefix: 'lo',
   label: 'Loomy',
 
+  /** 短信验证码表单登录，上游不产生授权地址——不要开空白窗。 */
+  loginMode: 'form',
+
   // 客户端身份：桌面端 package.json 的 version（`loomy-version` 头也用它）。
   // **全项目唯一的版本值**：`auth.ts` 的 `LOOMY_VERSION` 是空串，靠 `configure()` 注入。
   identity: {

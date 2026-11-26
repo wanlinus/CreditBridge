@@ -2,6 +2,8 @@
 // **这不是账单**：这些 token 花在四家上游上，不走 DeepSeek 的 API，它只是参照系。
 // 价目来源 https://api-docs.deepseek.com/zh-cn/quick_start/pricing/（2026-11-13 抓取，元/百万 tokens）。
 
+import { beijingHour, beijingWeekday } from './clock.ts';
+
 /** 每 1M token 的人民币价格。 */
 export interface ModelPrice {
   inputCacheHit: number;
@@ -21,20 +23,16 @@ export const DEEPSEEK_PEAK_PRICES: Record<string, ModelPrice> = {
 /** 算价用的模型。只有 flash 一档——账本里所有模型都按它折算，不按模型分档。 */
 export const DEFAULT_PRICING_MODEL = 'deepseek-flash';
 
-/** 这个时刻是不是**高峰时段**（北京时间周一至周五 9:00-12:00、14:00-18:00，左闭右开）。 */
+/**
+ * 这个时刻是不是**高峰时段**（北京时间周一至周五 9:00-12:00、14:00-18:00，左闭右开）。
+ *
+ * **「北京时间」是业务规则，不是运行环境属性**——换算在 `clock.ts` 里，不看进程 `TZ`。
+ * 2026-11-25 踩到：本地 UTC+8、CI 是 UTC，按本地时间判断会让峰谷全反。
+ */
 export function isPeakHour(at: number = Date.now()): boolean {
-  // **「北京时间」是业务规则，不是运行环境属性**，显式按 `Asia/Shanghai` 换算、不看进程 `TZ`。
-  // 2026-11-25 踩到：本地 UTC+8、CI 是 UTC，按本地时间判断会让峰谷全反（59 项测试失败 15 项）。
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai',
-    weekday: 'short',
-    hour: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date(at));
-  const weekday = parts.find((p) => p.type === 'weekday')?.value ?? '';
-  if (weekday === 'Sat' || weekday === 'Sun') return false;
-  // `hour12: false` 在午夜会给出 "24"，统一成 0。
-  const hour = Number(parts.find((p) => p.type === 'hour')?.value ?? '0') % 24;
+  const weekday = beijingWeekday(at);
+  if (weekday === 0 || weekday === 6) return false;
+  const hour = beijingHour(at);
   return (hour >= 9 && hour < 12) || (hour >= 14 && hour < 18);
 }
 
