@@ -53,3 +53,27 @@ export function beijingToday(at: number = Date.now()): string {
   const pick = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
   return `${pick('year')}-${pick('month')}-${pick('day')}`;
 }
+
+/**
+ * 把 `YYYY-MM-DD` 解析成**北京时间**那天的 0 点（毫秒）。
+ *
+ * 上海没有夏令时，UTC+8 恒定，所以直接 `Date.UTC(y, m-1, d) - 8h`，不经过
+ * `Intl`（CI 的 small-icu 可能缺 locale 数据）也不经过进程 `TZ`。
+ */
+export function beijingMidnight(date: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) throw new Error(`date 要是 YYYY-MM-DD：${date}`);
+  const utc = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return utc - 8 * 3600000;
+}
+
+/**
+ * 毫秒时间戳 → 北京时间的 `YYYY-MM-DD`。**不看进程 `TZ`**、不依赖 `Intl` locale。
+ *
+ * 账本分桶（`+8 hours`）和日期 key 都走这条路，两边必须同一个口径，否则「今天」
+ * 的边界在 UTC 进程里会差一天。
+ */
+export function beijingDate(at: number): string {
+  const shifted = new Date(at + 8 * 3600000);
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`;
+}

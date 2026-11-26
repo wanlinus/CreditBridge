@@ -2,7 +2,7 @@
 // 2026-11-22 曾拆成 `ledger/` 下 4 个文件又合回来（拆完 record.ts 只剩 35 行代码）；文件长是因为注释，不是逻辑复杂。
 // 三段职责：写入口 `recordChatUsage` · 汇总 `usageSummary` · 单日 `usageHourly`（`pricingRows` 两条读路径共用）。
 import { log } from './logger.ts';
-import { beijingHour, beijingToday, beijingWeekday } from './shared/clock.ts';
+import { beijingDate, beijingHour, beijingMidnight, beijingToday, beijingWeekday } from './shared/clock.ts';
 import {
   CACHE_ESTIMATE_FALLBACK_RATE,
   CACHE_ESTIMATED_PROVIDERS,
@@ -125,11 +125,12 @@ function addDim(map: Map<string, Bucket>, key: string, group: Bucket): void {
 // `daily[]` 近 14 天、`today` 今天 0 点起。`window` 字段把第一个窗口报给界面——**不要在界面上写死 30**。
 export async function usageSummary(options: { provider?: string | null; account?: string | null } = {}) {
   const filter = { provider: options.provider || null, account: options.account || null };
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const todaySince = startOfToday.getTime();
+  // **「今天」按北京时间定**，和 SQL 的 `+8 hours` 同一个口径。用本地 `setHours(0,0,0,0)`
+  // 在 UTC 进程里会偏 8 小时，导致「今天」的边界和分桶对不上（2026-11-26 在 CI 上把
+  // `usage-daily` 干红了 14 项）。
+  const todaySince = beijingMidnight(beijingToday());
 
-  // 近 14 天（含今天）按本地日历日分桶。每根柱子里带三个维度的子分组，前端切换维度不用重新请求后端。
+  // 近 14 天（含今天）按北京日历日分桶。每根柱子里带三个维度的子分组，前端切换维度不用重新请求后端。
   const DAYS = 14;
   const dayKeys: string[] = [];
   const dayBuckets = new Map<
@@ -145,8 +146,7 @@ export async function usageSummary(options: { provider?: string | null; account?
     }
   >();
   for (let i = DAYS - 1; i >= 0; i -= 1) {
-    const day = new Date(todaySince - i * 86400000);
-    const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+    const key = beijingDate(todaySince - i * 86400000);
     dayKeys.push(key);
     dayBuckets.set(key, {
       date: key,
@@ -316,21 +316,15 @@ export interface HourlyBucket {
 /**
  * 解析 `YYYY-MM-DD` 成**北京时间**那一天的 0 点（毫秒）。
  *
- * **不能用 `new Date('2026-11-23T00:00:00')`**：那是进程本地时区，CI（UTC）下会比
- * 北京时间早 8 小时，和 SQL 里 `+8 hours` 的分日对不上。这里显式按 `+08:00` 解析。
- *
- * **必须回读比对**：`new Date('2026-02-30T00:00:00')` 不报错、会进位成 3 月 2 日，
+ * 复用 `beijingMidnight`（`Date.UTC() - 8h`，不经过进程 `TZ` 也不经过 `Intl` locale）。
+ * 回读比对是必要的：`new Date('2026-02-30')` 会进位成 3 月 2 日而不是报错，
  * 不回读就把「不存在的日期」算成真实的日子。
  */
 function startOfLocalDate(date: string): number {
-  if (!/^\d{4}-\d{2}-\d{2}$/u.test(date)) throw new Error('date 要是 YYYY-MM-DD');
-  const parsed = new Date(`${date}T00:00:00+08:00`);
-  if (Number.isNaN(parsed.getTime())) throw new Error(`${date} 不是合法日期`);
-  // 回读时也按北京时间取年月日，否则 UTC 下会退到前一天。
-  const back = new Date(parsed.getTime() + 8 * 3600000);
-  const roundTrip = `${back.getUTCFullYear()}-${String(back.getUTCMonth() + 1).padStart(2, '0')}-${String(back.getUTCDate()).padStart(2, '0')}`;
-  if (roundTrip !== date) throw new Error(`${date} 不是合法日期`);
-  return parsed.getTime();
+  const parsed = beijingMidnight(date);
+  if (Number.isNaN(parsed)) throw new Error(`${date} 不是合法日期`);
+  if (beijingDate(parsed) !== date) throw new Error(`${date} 不是合法日期`);
+  return parsed;
 }
 
 /** 一天的毫秒数。**假定没有夏令时**（容器 `TZ=Asia/Shanghai`），理由见 store 的注释。 */

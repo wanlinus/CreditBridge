@@ -1,9 +1,8 @@
-// 账号层：存储、序号分配、状态机、凭据刷新。全部跑在临时目录里。
-//
-// 跑：node test/accounts.mjs
+// 守护账本串号：删号后序号不回收，新号接不上旧账本的记录。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { check, done } from './_helpers.mjs';
 
 const tempData = fs.mkdtempSync(path.join(os.tmpdir(), 'qb-accounts-'));
 process.env.QB_DATA_DIR = tempData;
@@ -11,19 +10,6 @@ process.env.QB_DATA_DIR = tempData;
 const accounts = await import('../src/core/accounts.ts');
 // v4 起账号进库（`account` / `account_seq`），断言查库而不是查文件。
 const { db, closeDb } = await import('../src/shared/db.ts');
-
-let pass = 0;
-let fail = 0;
-function check(name, actual, expected = true) {
-  const ok = JSON.stringify(actual) === JSON.stringify(expected);
-  if (ok) {
-    pass += 1;
-    console.log(`  ✓ ${name}`);
-  } else {
-    fail += 1;
-    console.log(`  ✗ ${name}\n      期望 ${JSON.stringify(expected)}，实际 ${JSON.stringify(actual)}`);
-  }
-}
 
 const dbRow = (id) => db.prepare('SELECT * FROM account WHERE id = ?').get(id);
 const cursor = (channelId) => db.prepare('SELECT seq FROM account_seq WHERE channel_id = ?').get(channelId)?.seq;
@@ -62,8 +48,11 @@ check('游标和现存最大 seq 一致', [cursor('workbuddy'), Math.max(...acco
 // ---- 4. 按上游 uid 去重 ----
 accounts.updateAccount('wb-1', { profile: { uid: 'u-1', username: '示例账号' } });
 check('同 uid 能找回来', accounts.findAccountByUid('workbuddy', 'u-1')?.id, 'wb-1');
-check('uid 为空时不误匹配', accounts.findAccountByUid('workbuddy', '') === undefined);
-check('跨通道不串', accounts.findAccountByUid('trae', 'u-1') === undefined);
+// 一正（命中）一反（不该命中）：空 uid、跨通道都不该匹配。
+for (const [name, channelId, uid] of [
+  ['空 uid 不误匹配', 'workbuddy', ''],
+  ['跨通道不串', 'trae', 'u-1'],
+]) check(name, accounts.findAccountByUid(channelId, uid) === undefined);
 
 // ---- 5. 改 label / 凭据 ----
 check('改 label', accounts.updateAccount('wb-1', { label: '新名字' }).label, '新名字');
@@ -91,12 +80,17 @@ check('停用', accounts.setStatus('wb-1', 'disabled').status, 'disabled');
 check('停用的提示是「已停用」', accounts.checkUsable(accounts.getAccount('wb-1')).code, 'account_disabled');
 
 // ---- 7. 按上游状态码改状态 ----
-accounts.markReady('wb-1');
-check('401 → invalid', accounts.applyFailure(accounts.getAccount('wb-1'), 401, 'unauthorized').status, 'invalid');
-accounts.markReady('wb-1');
-check('429 → cooldown', accounts.applyFailure(accounts.getAccount('wb-1'), 429, 'too many').status, 'cooldown');
-accounts.markReady('wb-1');
-check('500 不改状态（上游炸了，不是这个号的问题）', accounts.applyFailure(accounts.getAccount('wb-1'), 500, 'boom') === undefined);
+// 401/429 是账号级问题要改状态，500 是上游问题不动——一组数据钉住这条边界。
+for (const [status, code, expected] of [
+  [401, 'unauthorized', 'invalid'],
+  [429, 'too many', 'cooldown'],
+  [500, 'boom', null],
+]) {
+  accounts.markReady('wb-1');
+  const result = accounts.applyFailure(accounts.getAccount('wb-1'), status, code);
+  if (expected) check(`${status} → ${expected}`, result.status, expected);
+  else check(`${status} 不改状态（上游炸了，不是这个号的问题）`, result === undefined);
+}
 check('500 之后仍是 ready', accounts.getAccount('wb-1').status, 'ready');
 
 // ---- 8. 凭据刷新 ----
@@ -157,5 +151,4 @@ check('没有凭据时报错（不是静默返回空）', await (async () => {
 // 先关库再删临时目录：Windows 上删不掉一个被打开的文件（EPERM）。
 closeDb();
 fs.rmSync(tempData, { recursive: true, force: true });
-console.log(fail === 0 ? `\n全部通过（${pass} 项）` : `\n${fail}/${pass + fail} 项失败`);
-process.exitCode = fail === 0 ? 0 : 1;
+done();
