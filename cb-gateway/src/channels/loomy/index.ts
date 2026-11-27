@@ -4,7 +4,7 @@
 
 import type { AppConfig } from '../../types.ts';
 import { defineChannel } from '../types.ts';
-import { configureIdentity, fetchIdentity, setLogger } from './auth.ts';
+import { configureIdentity, fetchIdentity, logoutSession, setLogger } from './auth.ts';
 import { runLoomyLogin } from './login.ts';
 import { buildModelList, catalog } from './models.ts';
 import { chatLoomy, setUpstreamLogger } from './upstream.ts';
@@ -67,6 +67,10 @@ export const loomyChannel = defineChannel({
 
   async login(options) {
     return runLoomyLogin({ onPrompt: options?.onPrompt, signal: options?.signal });
+  },
+
+  async logoutOf(account) {
+    await logoutSession(account.credential?.session || '');
   },
 
   async chatAs(account, request) {

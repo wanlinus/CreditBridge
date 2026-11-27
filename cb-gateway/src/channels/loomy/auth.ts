@@ -183,6 +183,23 @@ export async function fetchUserInfo(session: string): Promise<AccountProfile | n
 }
 
 /**
+ * 让上游注销这条 session。**只管上游、不碰本地账号**——删凭据从来不是登出。
+ * 上游接口 `POST /login/account/logout`（客户端 `logout()` 还原）；session 失效时它自己也回
+ * `100002`，这里同样当作「已经登出」放行，别把删账号做成「先要上游承认才删」。
+ */
+export async function logoutSession(session: string): Promise<void> {
+  if (!session) return;
+  try {
+    await accountRequest('/login/account/logout', { session });
+  } catch (error: any) {
+    // session 已失效时上游回 100002 / 020002，那正是「已经登出」——放行，别把删账号
+    // 做成「先要上游承认才删」。其它错误（网络、签名）照抛，让调用方知道没登出成。
+    if (/100002|020002/.test(String(error?.message || ''))) return;
+    throw error;
+  }
+}
+
+/**
  * 生成 W3C traceparent。**对话必须带它**：实测 Loomy iModel 缺 traceparent 时
  * `/chat/completions` 会挂死直到超时。模型 / 余额接口则不需要。
  */
