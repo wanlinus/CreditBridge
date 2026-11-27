@@ -15,8 +15,8 @@ node_modules/
 # IDE scratch
 .idea/
 
-# Build output from packaging/build.ps1
-dist/
+# 前端构建产物（网关 web/ 的 Vite 输出）
+cb-gateway/web/dist/
 
 # DSH profile backups created by tools/sync-models.mjs and the config editor
 # live outside this tree (~/.dsh/profiles/desktop), listed here for completeness

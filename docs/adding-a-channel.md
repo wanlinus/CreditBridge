@@ -198,7 +198,7 @@ type ChatOutcome =
   `provider` / `account` 两段身份由路由层补。
 - 失败抛 `UpstreamError(status, message, { code, retryAt })`：
   - `401` → 路由把账号标 `invalid`
-  - `429` → 标 `cooldown`（`retryAt` 来自 `Retry-After`）
+  - `429` → **不改账号状态**，原样回给客户端（限流按模型、恢复时间网关猜不准）
   - 其余不动
 
 ---
@@ -280,7 +280,7 @@ async login({ onUrl, onPrompt, signal }) {
 ```bash
 cd cb-gateway
 npm run check     # tsc --noEmit，必须 0 error
-npm test          # 14 套全跑
+npm test          # 21 套全跑
 ```
 
 ### 硬编码自查（必做）

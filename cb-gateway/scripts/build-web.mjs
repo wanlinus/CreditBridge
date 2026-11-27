@@ -3,8 +3,8 @@
 // ## 为什么要这层包装
 //
 // 本机**没有全局 pnpm**（`Get-Command pnpm` 找不到），只有 DSH 运行时里那一份
-// （`~/.dsh/dsh-runtimes/*/dependencies/pnpm/bin/pnpm.cjs`）。而 `web/` 用 pnpm 是因为
-// 它和 jxc 同一套工具链、且 `packaging/build.ps1` 本来就在找 DSH 的 pnpm。
+// （`~/.dsh/dsh-runtimes/*/dependencies/pnpm/bin/pnpm.cjs`）。`web/` 用 pnpm 是因为
+// 它和 jxc 同一套工具链。
 //
 // 直接写 `pnpm --dir web build` 在这台机器上跑不了；写死 DSH 路径又会让别人的机器跑不了。
 // 所以按「PATH → DSH 运行时 → 报错并说清楚怎么办」的顺序找。

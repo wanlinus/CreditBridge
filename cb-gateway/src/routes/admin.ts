@@ -55,7 +55,6 @@ adminRoutes.get('/api/health', (c) => {
       label: account.label,
       status: account.status,
       statusMessage: account.statusMessage,
-      cooldownUntil: account.cooldownUntil,
       uid: account.profile?.uid ?? null,
       username: account.profile?.username ?? null,
       hasCredential: Boolean(account.credential),
@@ -238,7 +237,7 @@ adminRoutes.get('/api/models/catalog', async (c) => {
 // 校验放在这里而不是页面：这里是唯一能拒绝非法值的地方。**配错档位不会报错，只会让上游静默按默认跑**。
 adminRoutes.post('/api/models/settings', async (c) => {
   const parsed = await readJsonBody(c);
-  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, 400);
+  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, parsed.tooLarge ? 413 : 400);
   const body = parsed.body;
 
   const prefix = typeof body.prefix === 'string' ? body.prefix.trim() : '';
@@ -320,7 +319,7 @@ adminRoutes.get('/api/models/visibility', (c) => {
 // 放在 `/api/*` 而不是页面层：它改的是网关配置，和 `/api/models`、`/v1/models` 是同一个东西的两端。
 adminRoutes.post('/api/models/visibility', async (c) => {
   const parsed = await readJsonBody(c);
-  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, 400);
+  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, parsed.tooLarge ? 413 : 400);
   const body = parsed.body;
   const channel = channelByPrefix(typeof body.prefix === 'string' ? body.prefix : '');
   if (!channel) return c.json({ error: { message: `没有前缀 ${body.prefix}`, type: 'not_found' } }, 404);

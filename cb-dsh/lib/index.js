@@ -422,8 +422,7 @@ export function writeProvider(config) {
 // ---------------------------------------------------------------- 模型清单自动同步
 //
 // 网关 `/models` 页勾选「哪些模型出现在 DSH」之后，DSH 并不会自己知道——它的模型
-// 列表只读 profile 的 `models:` 段。早先靠人在笔记本上手跑
-// `node tools/sync-profile-models.mjs ... --write`，忘了就永远不生效。
+// 列表只读 profile 的 `models:` 段。早先靠人手动同步，忘了就永远不生效。
 //
 // 现在由 host 半边轮询：每 15 秒问一次网关 `/api/models`，跟 profile
 // 里现有的 `models:` 段逐字节比，**不一样才写**（写前备份）。所以：

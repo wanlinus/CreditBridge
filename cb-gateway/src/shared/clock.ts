@@ -2,8 +2,7 @@
 //
 // **两种时间口径必须分开**：
 //
-// - `localDate()` / `formatClock()` 是给**人看的**（签到日期、冷却提示），
-//   用进程本地时区就够——容器里 `TZ=Asia/Shanghai`。
+// - `localDate()` 是给**人看的**（签到日期），用进程本地时区就够——容器里 `TZ=Asia/Shanghai`。
 // - `beijingHour()` / `beijingWeekday()` 是**业务规则**：峰谷计价按北京时间算。
 //   它不能看进程 `TZ`——2026-11-25 踩过，本地 UTC+8、CI 是 UTC，
 //   按本地时间判峰谷会让结果全反（59 项测试失败 15 项）。
@@ -11,12 +10,6 @@
 /** 本机日历日 `YYYY-MM-DD`。给人看的日期用这个。 */
 export function localDate(at: Date = new Date()): string {
   return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
-}
-
-/** `21:35`。只给时分是有意的：冷却很少跨天，真跨天了消息里还有上游原文。 */
-export function formatClock(ms: number): string {
-  const date = new Date(ms);
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
 /** 北京时间的小时（0-23）。**不看进程 `TZ`**，峰谷计价要靠它。 */

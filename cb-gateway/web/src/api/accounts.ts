@@ -29,7 +29,6 @@ export interface AccountRow {
   label: string;
   status: string;
   statusMessage: string | null;
-  cooldownUntil: number | null;
   profile: { uid?: string | null; username?: string | null; domain?: string | null } | null;
   createdAt: number;
   /* ---- 积分：官方口径，只读。**各通道的单位和重置规则都不同，不可相加** ---- */
@@ -219,7 +218,7 @@ export function verifyAccount(id: string): Promise<{ ok: true; profile: Record<s
 
 /**
  * 改账号。`label` 空串会被忽略；`status` **只接受** `disabled` / `ready`——
- * `cooldown` / `invalid` 是网关按上游反应写的，人手设一个「凭据失效」只会让人以为真坏了。
+ * `invalid` 是网关按上游反应写的，人手设一个「凭据失效」只会让人以为真坏了。
  */
 export function patchAccount(
   id: string,

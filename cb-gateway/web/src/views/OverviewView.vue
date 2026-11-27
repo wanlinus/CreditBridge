@@ -302,8 +302,7 @@ function refresh(): void {
     <!-- 异常账号：只在真有问题时出现，不占常驻版面。 -->
     <div v-for="a in notReady" :key="a.id" class="alert" :class="a.status === 'invalid' ? 'bad' : 'warn'">
       <b>{{ a.channelLabel }}</b> · {{ a.id }} {{ a.label }} —
-      {{ a.status === 'invalid' ? '凭据已失效，去账号页重新登录' : a.status === 'disabled' ? '已停用' : '限流中' }}
-      <template v-if="a.status === 'cooldown' && a.cooldownUntil">（{{ fmtClock(a.cooldownUntil) }} 恢复）</template>
+      {{ a.status === 'invalid' ? '凭据已失效，去账号页重新登录' : '已停用' }}
       <template v-if="a.statusMessage">：{{ a.statusMessage }}</template>
     </div>
 

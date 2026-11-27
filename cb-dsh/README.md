@@ -267,11 +267,11 @@ Copy-Item .\lib\index.js  $dst\index.js  -Force   # 要重启 DSH 才重新监�
 
 > **这些测试直接 import `lib/index.js` 的真代码**，用 `QB_DSH_PROFILE` + `QB_DSH_CONFIG_DIR` 指向临时目录。早先 `write-provider.mjs` 的做法是「把函数体抽出来、缺的辅助函数自己补一份」——于是 `index.js` 里 `providerAbove` / `blockEnd` 两个**从没定义过**的引用被测试的桩补上了：测试全绿，用户点保存必炸 `providerAbove is not defined`。别再回到「抽源码 + 自带桩」那种写法。
 
-**打包安装**（正式路径）：`pnpm pack`（产 `cb-dsh-<version>.tgz`，当前 `0.10.2`）→ 放进 `packages\`（`.gitignore` 已忽略 `*.tgz`）→ 改 `~\.dsh\profiles\desktop\package.json` 里的 `dependencies` 指向新包（`dsh.profile.bundles` 写的是包名 `cb-dsh`，升版本不用改）→ 删同目录 `pnpm-lock.yaml`（`integrity` 变了，不删报 `ERR_PNPM_TARBALL_INTEGRITY`）→ `pnpm install --dir ~\.dsh\profiles\desktop` → 哈希比对（源码 / 包内 / `node_modules\cb-dsh` 三处的 `lib/client.js` 必须一致）→ **重启 DSH**。
+**打包安装**（插件不进容器，只能装在本机 DSH）：`pnpm pack`（产 `cb-dsh-<version>.tgz`，当前 `0.10.3`）→ 放进 `packages\`（`.gitignore` 已忽略 `*.tgz`）→ 改 `~\.dsh\profiles\desktop\package.json` 里的 `dependencies` 指向新包（`dsh.profile.bundles` 写的是包名 `cb-dsh`，升版本不用改）→ 删同目录 `pnpm-lock.yaml`（`integrity` 变了，不删报 `ERR_PNPM_TARBALL_INTEGRITY`）→ `pnpm install --dir ~\.dsh\profiles\desktop` → 哈希比对（源码 / 包内 / `node_modules\cb-dsh` 三处的 `lib/client.js` 必须一致）→ **重启 DSH**。
 
 **诊断打点**：`probe()` 把生命周期阶段 GET 到网关 `/api/plugin-probe`，落盘到网关 `data/logs/plugin-probe.log`（容器里在卷挂载的 `data/logs/`）：`factory → apply → inject-callback → inject-called → panel-inject-called → panellist-inject-callback → main-inject-callback → mount → fetch-ok`。两处 inject 回调的先后不定，各阶段都出现过即可；`*-error` 表示对应注册抛错，`fetch-error` 表示徽标那轮探活没打通。打点也走 `gwFetch()`，没配 key 同样 401，日志里会缺阶段。
 
-`cb-gateway/tools/preflight-dsh.mjs` 是重启前自检（profile 非空、关键条目齐全、插件两半语法、有效备份、bundle 已安装且 `file:` 指向的 tarball 存在）。它里面那条「已登录通道必须有 `models:` 段」的检查是按 v1 写的，模型同步搬进插件之后已经过时——以插件面板显示的同步状态为准。
+`cb-gateway/tools/preflight-dsh.mjs` 是重启前自检（profile 非空、关键条目齐全、插件两半语法、有效备份、bundle 已安装且 `file:` 指向的 tarball 存在）。它按 v2 形态检查聚合 provider 的 `models:` 段在不在，有没有 models 段看插件面板的同步状态比看 profile 更准。
 
 ---
 

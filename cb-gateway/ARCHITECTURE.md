@@ -121,9 +121,9 @@ body 只有一个 `scene: 'pc_incentive_task_mvp_v3'`。**唯一门槛是 query 
   `canLogin` 为真、前端不用改。
 - **对话有独立风控**：高频请求回 `710022004`（`error_msg` 写 `rate limited` 但真实原因在
   `decision.subtype = semantic_reasoning`）。`channels/doubao/upstream.ts` 把它映射成
-  **429**，账号标 `cooldown` 而不是 `invalid`——否则一次风控就把号封成失效。
+  **429**——路由层对 429 不改账号状态，否则一次风控就把号封成 `invalid`（那是误伤）。
 - **风控判定集中在 `channels/doubao/risk-control.ts`**：登录和对话共用一份码表。
-  一律映射成 **429**（429 让路由标 `cooldown`；401 会标 `invalid`，风控是临时的，标 invalid 是误伤）。
+  一律映射成 **429**（429 不改账号状态；401 会标 `invalid`，而风控是临时的）。
   `1105` 带 `verify_center_decision_conf`（挑战数据在 `detail` 里，**不是**顶层 `captcha`），
   登录时会把验证页嵌进弹窗让用户点。
 - **`2046` 的验证由 `channels/doubao/verify-ways.ts` 自己做完**（2026-11-26 实现）。
@@ -174,7 +174,7 @@ body 只有一个 `scene: 'pc_incentive_task_mvp_v3'`。**唯一门槛是 query 
 
 | 文件 | 职责 |
 |---|---|
-| `src/core/accounts.ts` | 账号的状态机与内存副本：`account` / `account_seq` 两张表（`store/accounts.ts` 管 SQL）、`ready/cooldown/invalid/disabled`、`usableCredential()`（过期刷新 + 并发单飞）。**没有调度器**。 |
+| `src/core/accounts.ts` | 账号的状态机与内存副本：`account` / `account_seq` 两张表（`store/accounts.ts` 管 SQL）、`ready/invalid/disabled`、`usableCredential()`（过期刷新 + 并发单飞）。**没有调度器**，也**没有 `cooldown` 档**（上游 429 不改账号状态，见 `applyFailure`）。 |
 | `src/core/router.ts` | 模型 id 的拼装/拆解（`wb-1/hy4free`）、显示名生成（`wb-1/Hy4 · 0.00x`）、解析失败的人话。 |
 | `src/core/login-tasks.ts` | 「登录 → 账号」的接缝：起后台任务、轮询进度、按上游 uid 去重、单账号通道覆盖。任务状态变化时往 `core/events.ts` 推事件。 |
 | `src/core/events.ts` | 进程内事件总线：网关 → 插件的单向推送（极薄，没有队列和重放）。目前只用于「登录开始了，去开回调通道」。 |
@@ -274,11 +274,9 @@ Qoder 常驻 CLI 时代的 `cli/`（88MB），以及 Trae「按请求结算」�
 定义在 `src/types.ts` 的 `Channel`（运行时校验在 `src/channels/types.ts`）。
 
 **必需成员**：`id` `idPrefix` `label` `identity` `modelsOf` `creditsOf` `chatAs`。
-**可选**：`configure` `warmup` `login` `loginLoopback` `probe` `catalogOf` `checkinStatusOf` `checkinClaimOf` `lastCheckinOf` `rotateDeviceIdOf` `logoutOf` `multiAccount`（默认 `true`）。
+**可选**：`configure` `login` `loginLoopback` `probe` `catalogOf` `checkinStatusOf` `checkinClaimOf` `lastCheckinOf` `rotateDeviceIdOf` `logoutOf` `multiAccount`（默认 `true`）。
 
 `loginLoopback()` 回答「登录回调是不是必须从浏览器所在机器的环回地址打进来」。Trae 返回 `{port, path}`（授权页只认环回，内网 IP 不跳），网关据此在登录任务的 SSE 事件里带上 `loopback`，由插件在本机开 TCP 转发；没实现它的通道（WorkBuddy / Qoder）事件里是 `null`，插件什么都不做。**随机端口时必须返回 `null`**——外部没法预告一个随机端口。
-
-`warmup(account)` 在启动预热时对每个 `ready` 账号调一次，用来垫本地基线——Trae 的账本靠「请求前后读账号计数器做差」，没有基线的话重启后第一个请求记不到消耗。
 
 `rotateDeviceIdOf(account)` 给这个账号换一套**设备身份**（目前只有 Trae 实现）。背景：上游按**设备**记签到（实测 `did_checked_in` 逐设备不同），而客户端一台机器只登一个号，所以一台机器上多个号不该共用一个设备号。`selfDeviceId` 因此从「机器级」改成「每账号一份」，新登录的号自动独立；已存在的账号靠这个动作换掉老的共用号。方法只返回要覆盖的字段（`{ selfDeviceId }`），路由层**合并**进凭据而不是整份替换。**它治不了 9074**——那个是上游活动瞬时爆满，与设备号无关。
 
@@ -347,7 +345,7 @@ type ChatOutcome =
 3. 解析 body       不是 JSON → 400
 4. resolveModel    "wb-2/hy4free" → 通道 workbuddy + 账号 wb-2 + 模型 hy4free
                    拆不出 → 404，报错里给正确写法和现有账号
-5. checkUsable     ready 放行；cooldown → 429；invalid / disabled → 503
+5. checkUsable     ready 放行；invalid / disabled → 503
 6. body.model 改回裸 id，调 channel.chatAs(account, { body, signal, onUsage })
 7. 按 outcome 发响应：json → c.json；stream → ReadableStream（pull 取一块，cancel 时调
    iterator.return() 停止读上游）
@@ -356,7 +354,7 @@ type ChatOutcome =
                    用量（token）是**上游在响应里报的**，网关只记账、不自己数。
                    2026-11-13 起不再为积分做逐请求结算（Trae 那套请求前后做差已删），
                    积分改为只读官方余额——见 `private/docs/architecture-decisions.md（ADR-8/ADR-9）`
-9. 失败            UpstreamError 的 status 决定账号状态：401 → invalid，429 → cooldown
+9. 失败            UpstreamError 的 status 决定账号状态：401 → invalid；429 / 其余 → 不动账号
                    （带 Retry-After），其余不动。**不换号**
 ```
 
@@ -398,9 +396,6 @@ GET /v1/models
   │                         │                         │                          │               │
   │                         │ checkUsable(account)    │                          │               │
   │                         │  disabled/invalid → 503 │                          │               │
-  │                         │  cooldown 未到点 → 429  │                          │               │
-  │                         │                         │                          │               │
-  │                         │ modelCooldownOf(账号,模型) → 429（只封这个模型）      │               │
   │                         │                         │                          │               │
   │                         │ body.model = 'hy4free'（剥掉账号段）                 │               │
   │                         │                         │                          │               │
@@ -422,7 +417,7 @@ GET /v1/models
   │                         ├────────────────────────►│ recordChatUsage           │               │
   │                         │                         │ → usage_record 追加一行    │               │
   │                         │                         │                          │               │
-  │  失败分支：              │ 429 → 只让账号保持 ready，不记任何状态（客户端自己退避）│               │
+  │  失败分支：              │ 429 → 不改账号状态，原样回给客户端（客户端自己退避）  │               │
   │                         │ 401 → markInvalid（去管理台重登）                    │               │
   │                         │ credential_expired → markInvalid（本地就刷不出来）    │               │
   │                         │ credential_unavailable → 不改状态（网络/5xx，可重试）│               │
@@ -432,7 +427,7 @@ GET /v1/models
 **三个容易被忽略的设计点**
 
 1. **`body.model` 会被就地改写**：进来是 `wb-2/hy4free`，发给上游前剥成 `hy4free`。账号段和通道前缀是网关自己的寻址方式，上游不认识。
-2. **记账是「等用量就绪」再写，但不拖住响应**：`settleLater()` 先让响应发出去，最多等 20 秒拿 usage。（Trae 不报单次积分，要等 3 秒读计数器做差。）
+2. **记账是「等用量就绪」再写，但不拖住响应**：`settleLater()` 先让响应发出去，最多等 20 秒拿 usage。`credit` 只取上游报的值（Trae / WorkBuddy 不报，恒为 `null`），网关不自己算积分。
 3. **客户端断开是 499 不是错误**：`cancel()` 里先 `iterator.return()` 让通道收尾（顺带 `onUsage`），再记 `499`。顺序反了会记成「用量未知」——2026-11-10 的「今日用量恒为 0」就是这个 bug。
 
 ### 8b. 模型清单流（`/v1/models` 与 `/api/models` 共用）
@@ -548,6 +543,25 @@ channels[]               accountsOf(channel)          channel.modelsOf(account) 
 | 「通道关掉了」和「取不到」必须能分开 | 两者在 `/v1/models` 上都表现为 0 个模型，但语义相反。状态在 `/api/health` 的 `listed` 字段 |
 | `/api/health` 只读本地状态，不发网络请求 | 它会被人反复轮询；每次去打上游等于把限流额度花在读健康上。验活走 `POST /api/accounts/<id>/verify` |
 | 改密码不换 profile 里的凭据 | 改密只是「人进管理台」的凭据；API key 独立存在，改密码不该让 DSH 掉线 |
+
+---
+
+## 九·五、运行边界与容量假设
+
+这一节写的是**当前实现成立的硬前提**，不是「以后可以怎样」。它们都没有代码强制，
+改架构前先对照这里——违反了不会报错，只会表现成「越用越慢」或「某天突然 OOM」。
+
+| 边界 | 现在的事实 | 违反会怎样 |
+|---|---|---|
+| **单进程** | 一个 Node 进程、一份内存副本（账号 / 可见性 / 模型设置 / key 快照）。没有多 worker、没有集群。 | 起第二个进程会让两份内存副本各自写库，状态互相覆盖。所以 `deploy.ps1` 只重建一个容器。 |
+| **SQLite 同步写** | `node:sqlite` 的 `DatabaseSync`，单连接、全同步。记账（`insertUsage`）直接落在请求路径上。 | 高并发 SSE 时写库会串行阻塞事件循环。`mem_limit: 1536m` 只是兜底，不是解决。 |
+| **账本无限增长** | `usage_record` 只追加，**没有归档 / 分表 / 上限**。唯一的防御是查询窗口（`totals` 近 30 天、`daily` 近 14 天）。 | 表长到百万级后，`COUNT(*)` 类聚合会变慢（`idx_usage_ts` 能帮 `WHERE`，帮不了全表计数）。要长期跑就自己加归档任务。 |
+| **请求体上限 16MB** | `shared/json-body.ts` 的 `MAX_BODY_BYTES`。所有写端点共用。 | 调大它等于放大内存 DoS 面：`/v1/*` 绑在 `0.0.0.0` 上，任何拿到 key 的客户端都能发。 |
+| **时区口径是北京时间** | 账本分桶、峰谷计价、「今天」边界一律按 `Asia/Shanghai`（`shared/clock.ts`），不看进程 `TZ`。 | 改回本地时间会在 UTC 进程里差 8 小时——2026-11-26 CI 上红过 14 项。 |
+| **单机单用户定位** | 密码一套、没有多租户、没有 `accountScope`（预留未实现）。 | 多人共用一个网关时，「谁的请求花了谁的额度」只能靠 API key 的 `label` 人工区分。 |
+
+**为什么这些不写进代码强制**：单用户单机工具里，加一个「进程锁」「连接池」「归档定时器」
+换来的复杂度大于它防的问题。写在这里是为了让改动者知道**自己正在越过哪条线**。
 
 ---
 

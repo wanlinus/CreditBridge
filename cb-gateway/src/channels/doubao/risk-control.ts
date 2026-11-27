@@ -301,8 +301,8 @@ function challengeOf(doc: any): CaptchaChallenge | null {
 /**
  * 把风控包装成 `UpstreamError`，状态码 429。
  *
- * **429 而不是 401/502**：路由层看到 429 会把账号标 `cooldown` 并带恢复时间，
- * 看到 401 会标 `invalid`（永久失效）。风控是临时的，标 invalid 是误伤。
+ * **429 而不是 401/502**：路由层对 429 不改账号状态；看到 401 会标 `invalid`（永久失效）。
+ * 风控是临时的，标 invalid 是误伤。
  *
  * 错误信息里带上**可执行建议**（`riskControlAdvice`）——只说「被风控了」用户没法处理。
  */

@@ -8,7 +8,7 @@
 import { db } from '../shared/db.ts';
 import type { Account, AccountStatus } from '../types.ts';
 
-const STATUSES: AccountStatus[] = ['ready', 'cooldown', 'invalid', 'disabled'];
+const STATUSES: AccountStatus[] = ['ready', 'invalid', 'disabled'];
 
 /** 列名映射只有这一处；JSON 文本在这里解析回对象。 */
 function rowToAccount(row: any): Account | null {
@@ -24,7 +24,6 @@ function rowToAccount(row: any): Account | null {
     label: typeof row.label === 'string' && row.label !== '' ? row.label : row.id,
     credential: parseJson(row.credential),
     status,
-    cooldownUntil: typeof row.cooldown_until === 'number' ? row.cooldown_until : null,
     statusMessage: typeof row.status_message === 'string' ? row.status_message : null,
     profile: parseObject(row.profile),
     // 老行拿到的是列默认值 1；`!== 0` 比 `=== 1` 宽容，手改库写成 2 也不会把签到静默关掉。
@@ -63,8 +62,8 @@ export function listAccounts(): Account[] {
 export function upsertAccount(account: Account): void {
   db.prepare(
     `INSERT OR REPLACE INTO account
-       (id, channel_id, seq, label, credential, status, cooldown_until, status_message, profile, checkin_enabled, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (id, channel_id, seq, label, credential, status, status_message, profile, checkin_enabled, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     account.id,
     account.channelId,
@@ -72,7 +71,6 @@ export function upsertAccount(account: Account): void {
     account.label,
     account.credential === null || account.credential === undefined ? null : JSON.stringify(account.credential),
     account.status,
-    account.cooldownUntil,
     account.statusMessage,
     JSON.stringify(account.profile || {}),
     // SQLite 没有 boolean：存 0/1。`INSERT OR REPLACE` 会整行覆盖，所以调用方必须把现有的

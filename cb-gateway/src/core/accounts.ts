@@ -1,7 +1,6 @@
 // 账号层：一个通道的一个实例（一套上游凭据）。**内存副本和库必须一起更新**——只更内存重启后
 // 状态倒退，只更库本次进程读到旧状态（2026-11-23 在 45 上踩过）。状态机只在路由层改。
 
-import { formatClock } from '../shared/clock.ts';
 import {
   deleteAccount as deleteAccountRow,
   listAccounts as listAccountRows,
@@ -77,7 +76,6 @@ export function addAccount(input: NewAccountInput): Account {
     label: input.label || `账号${seq}`,
     credential: input.credential,
     status: 'ready',
-    cooldownUntil: null,
     statusMessage: null,
     profile: input.profile || {},
     checkinEnabled: true,
@@ -122,17 +120,14 @@ export function removeAccount(id: string): boolean {
   return true;
 }
 
-const DEFAULT_COOLDOWN_MS = 5 * 60 * 1000;
-
 export function setStatus(
   id: string,
   status: AccountStatus,
-  options: { until?: number; message?: string } = {},
+  options: { message?: string } = {},
 ): Account | undefined {
   const account = getAccount(id);
   if (!account) return undefined;
   account.status = status;
-  account.cooldownUntil = status === 'cooldown' ? (options.until ?? Date.now() + DEFAULT_COOLDOWN_MS) : null;
   account.statusMessage = options.message ?? null;
   account.updatedAt = Date.now();
   persist(account);
@@ -143,30 +138,25 @@ export function markReady(id: string): Account | undefined {
   return setStatus(id, 'ready');
 }
 
-export function markCooldown(id: string, until?: number, message?: string): Account | undefined {
-  return setStatus(id, 'cooldown', { until, message });
-}
-
 export function markInvalid(id: string, message?: string): Account | undefined {
   return setStatus(id, 'invalid', { message });
 }
 
 /**
- * 401 → `invalid`，429 → `cooldown`，其余不动（4xx/5xx 是这次请求不行，不该记到账号头上）。
- * **本地刷不出凭据不走这里**——那连请求都没发出去。
+ * 401 → `invalid`，其余不动（4xx/5xx 是这次请求不行，不该记到账号头上）。
+ *
+ * **429 不在这里处理**：上游限流是按模型的，恢复时间网关猜不准（WorkBuddy 连
+ * `Retry-After` 都不发），所以路由层把 429 原样回给客户端、让客户端自己退避。
+ * 这里曾经有 `429 → cooldown` 分支，但路由层的 `else if` 让它永远走不到，
+ * 2026-11-27 连同 `cooldown` 状态一起删掉了。
+ * **本地刷不出凭据也不走这里**——那连请求都没发出去。
  */
-export function applyFailure(
-  account: Account,
-  status: number,
-  message: string,
-  retryAt: number | null = null,
-): Account | undefined {
+export function applyFailure(account: Account, status: number, message: string): Account | undefined {
   if (status === 401) return markInvalid(account.id, message);
-  if (status === 429) return markCooldown(account.id, retryAt ?? undefined, message);
   return undefined;
 }
 
-export type GateCode = 'account_cooldown' | 'account_invalid' | 'account_disabled';
+export type GateCode = 'account_invalid' | 'account_disabled';
 
 export interface AccountGate {
   ok: boolean;
@@ -175,7 +165,7 @@ export interface AccountGate {
 }
 
 /** 这个账号现在能不能发请求。不能时给出**人话**（带账号 id，用户得知道去改哪个）。 */
-export function checkUsable(account: Account, now = Date.now()): AccountGate {
+export function checkUsable(account: Account): AccountGate {
   if (account.status === 'disabled') {
     return {
       ok: false,
@@ -189,17 +179,6 @@ export function checkUsable(account: Account, now = Date.now()): AccountGate {
       code: 'account_invalid',
       message: `账号 ${account.id} 的凭据已失效，去管理台重新登录${account.statusMessage ? `（${account.statusMessage}）` : ''}`,
     };
-  }
-  if (account.status === 'cooldown') {
-    if (account.cooldownUntil && account.cooldownUntil > now) {
-      return {
-        ok: false,
-        code: 'account_cooldown',
-        message: `账号 ${account.id} 限流中，${formatClock(account.cooldownUntil)} 后可再用${account.statusMessage ? `（${account.statusMessage}）` : ''}`,
-      };
-    }
-    // 到点自动翻回 ready 并落盘：一次限流不该永久锁死账号。
-    markReady(account.id);
   }
   return { ok: true };
 }

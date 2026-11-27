@@ -95,7 +95,7 @@
 - 源码是 **TypeScript，无构建步骤**：`node src/index.ts` 直接跑（Node 22.18+ 原生剥离类型）。`.ts` 即产物，改完重启进程即可。
 - **不能写** `enum` / `namespace` / 构造器参数属性 / 装饰器——剥离器做不了，会直接 `SyntaxError`。
 - 类型检查：`npm run check`（`tsc --noEmit`），**0 error 才算过**。
-- **`npm test` 必须过（14 套全跑，一条命令）**。改哪一块跑哪几套：
+- **`npm test` 必须过（21 套全跑，一条命令）**。改哪一块跑哪几套：
 
   | 改什么 | 跑什么 |
   |---|---|
@@ -106,6 +106,8 @@
   | 认证闸 / 改密闸 / 会话 | `test:auth` |
   | 落盘（原子写、config.json） | `test:persistence` |
   | SQL / 账本聚合 | `test:store-usage` `test:usage` `test:usage-hourly` |
+  | 徽标 / 「今日」口径 | `test:badge` |
+  | 请求体解析 / 大小上限 | `test:json-body` |
   | 费用折算 | `test:pricing` |
   | 签到调度 / 重试阶梯 | `test:checkin-scheduler` |
   | 签到开关 | `test:checkin-switch` |
@@ -141,7 +143,7 @@
 - **Basic 认证和 v1 的明文 token 都已删除**（E 阶段）：机器凭据只有 `api_key` 表，
   不要再写回「每次请求带密码」或「从 gateway.json 读 token」那种路子，也不为它们加兼容分支。
 - **路径分三层，改代码前先认清自己在哪层**：管理 API（`/api/*`，两种凭据，JSON）· OpenAI 兼容（`/v1/*`，只认 Bearer key）· 前端 SPA（其余一切，公开静态文件）。旧的「页面层 + 页面动作层」已删（2026-11-13）。分层表和每条规矩见 `cb-gateway/ARCHITECTURE.md` §六；`/v1/*` 里除了 `models` 和 `chat/completions` 不许放别的。
-- **读请求体只走 `shared/json-body.ts` 的 `readJsonBody()`**：7 个写端点原先各写一遍 `JSON.parse(await c.req.text())`，而**行为不一致**——`POST /api/keys` 那处坏 JSON 静默当 `{}`，于是半截 JSON 会成功建出一把名叫「未命名」的 key。现在统一：坏 JSON 一律 400，空 body 当 `{}`。它只返回 `{ok, body}` 或 `{ok:false, message}`，**错误信封由各路由自己拼**（`/api/*` 用 `bad_request`，`/v1/*` 用 `gateway_error`，因为 DSH 那侧按 OpenAI 形状解析）。
+- **读请求体只走 `shared/json-body.ts` 的 `readJsonBody()`**：7 个写端点原先各写一遍 `JSON.parse(await c.req.text())`，而**行为不一致**——`POST /api/keys` 那处坏 JSON 静默当 `{}`，于是半截 JSON 会成功建出一把名叫「未命名」的 key。现在统一：坏 JSON 一律 400，空 body 当 `{}`，**超过 16MB（`MAX_BODY_BYTES`）回 413**——`c.req.text()` 会把整个 body 读进内存，而 `/v1/*` 绑在 `0.0.0.0` 上，不封顶就是一个内存 DoS 面。它只返回 `{ok, body}` 或 `{ok:false, message, tooLarge?}`，**错误信封由各路由自己拼**（`/api/*` 用 `bad_request`，`/v1/*` 用 `gateway_error`，因为 DSH 那侧按 OpenAI 形状解析）。
 - 改完必须重启网关，并验证 `/api/health`、`/v1/models`、`/api/accounts/<id>/credits`、至少一次对话（`/api/accounts/<id>/usage` 里能看到那一行、`account` 字段对得上）。
 - **`data/config.json` 只管四项**：`checkinTime` / `defaultContextWindow` / `defaultMaxTokens` / `verbose`（`config.ts` 的 `FILE_KEYS`）。**`host` / `port` 不在其中**——那两个只认 `QB_HOST` / `QB_PORT` 环境变量，理由见下条。文件里如果还留着这两个键会被忽略，`mutateConfig()` 写回时也会删掉它们。
 - **容器部署靠环境变量，不靠改 `data/config.json`**：那个文件在卷里、镜像无法预设，别人拉镜像后也不会去改它。所以 `host` / `port` 支持 `QB_HOST` / `QB_PORT` 覆盖（`config.ts` 的 `loadConfig()`），`compose.yaml` 里显式给 `QB_HOST=0.0.0.0`。优先级：**环境变量 > config.json > 默认值**。Trae 登录的三个 `QB_TRAE_*` 同理。
@@ -205,8 +207,7 @@
 
 ## 开源发布
 
-**这个仓库直接发布到 GitHub**，不再走 `packaging/make-public.mjs` 那套「生成剥了注释的
-发布版」的流程——每次发版都要重新生成、还要在生成目录里重跑测试，太麻烦。
+**这个仓库直接发布到 GitHub**。
 
 靠 `.gitignore` 挡住不该公开的东西（**全在 `private/` 里**）：
 
@@ -219,6 +220,11 @@
 `private/` 里跟着代码在同一个工作目录、随时能查，只是不进公开仓库。源码注释里
 `private/docs/xxx.md` 的引用指向它——公开后读者看到的是一个不存在的路径，但至少
 明确告诉了他「这里有份内部文档」。
+
+`private/` 自己是一个**嵌套的独立 git 仓库**（纯本地、无 remote）：只跟踪 `docs/` 和
+`tools/`，`private/.gitignore` 忽略 `packages/`（安装包）和 `probes/`（解包产物）。外层
+`.gitignore` 的 `private/` 规则让外层 git 整个无视它，所以两个仓库互不干扰。在 private
+里提交用 `cd private && git add -A && git commit`，和外层是两套历史。
 
 **发布前必须自查的三件事**（都踩过）：
 
@@ -233,8 +239,7 @@
    的文档表、各 README 都指向它，漏一处就是死链。
 
 发布版里**保留代码注释**。这是刻意的：注释记的是「为什么这么做」和踩过的坑，
-对读源码的人有用；而 `make-public.mjs` 那套剥注释的做法会把「为什么」一起删掉，
-只剩下代码字面意思。
+对读源码的人有用。
 
 ### 推送到 GitHub
 
@@ -246,8 +251,7 @@ git remote add origin ssh://git@ssh.github.com:443/wanlinus/CreditBridge.git
 git push -u origin master
 ```
 
-**不要用 `--force`**：现在推的是这个仓库的真实历史，和远端有共同祖先（如果远端还是
-旧版 make-public 生成的独立历史，第一次推会被拒，那时才需要 `--force` 覆盖一次）。
+**不要用 `--force`**：现在推的是这个仓库的真实历史，和远端有共同祖先。
 
 ## 提交
 

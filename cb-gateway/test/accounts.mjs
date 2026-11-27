@@ -66,32 +66,22 @@ check('invalid 的提示带账号 id', accounts.checkUsable(accounts.getAccount(
 check('重新登录后回 ready', accounts.markReady('wb-1').status, 'ready');
 check('ready 可以用', accounts.checkUsable(accounts.getAccount('wb-1')).ok, true);
 
-accounts.markCooldown('wb-1', Date.now() + 60_000, '上游限流');
-check('冷却中不能用', accounts.checkUsable(accounts.getAccount('wb-1')).code, 'account_cooldown');
-check('冷却提示里有截止时间', /限流中，\d\d:\d\d 后可再用/u.test(accounts.checkUsable(accounts.getAccount('wb-1')).message), true);
-check('冷却不影响别的号', accounts.checkUsable(accounts.getAccount('wb-3')).ok, true);
-
-// 冷却到点自动回 ready（不然一次限流就永久锁死账号）。
-accounts.markCooldown('wb-1', Date.now() - 1);
-check('冷却到点后立刻可用', accounts.checkUsable(accounts.getAccount('wb-1')).ok, true);
-check('并且状态已写回 ready', accounts.getAccount('wb-1').status, 'ready');
-
 check('停用', accounts.setStatus('wb-1', 'disabled').status, 'disabled');
 check('停用的提示是「已停用」', accounts.checkUsable(accounts.getAccount('wb-1')).code, 'account_disabled');
 
 // ---- 7. 按上游状态码改状态 ----
-// 401/429 是账号级问题要改状态，500 是上游问题不动——一组数据钉住这条边界。
+// 401 是账号级问题要改状态，429/500 都不动——一组数据钉住这条边界。
 for (const [status, code, expected] of [
   [401, 'unauthorized', 'invalid'],
-  [429, 'too many', 'cooldown'],
+  [429, 'too many', null],
   [500, 'boom', null],
 ]) {
   accounts.markReady('wb-1');
   const result = accounts.applyFailure(accounts.getAccount('wb-1'), status, code);
   if (expected) check(`${status} → ${expected}`, result.status, expected);
-  else check(`${status} 不改状态（上游炸了，不是这个号的问题）`, result === undefined);
+  else check(`${status} 不改状态`, result === undefined);
 }
-check('500 之后仍是 ready', accounts.getAccount('wb-1').status, 'ready');
+check('429 之后仍是 ready（限流按模型、不落到账号上）', accounts.getAccount('wb-1').status, 'ready');
 
 // ---- 8. 凭据刷新 ----
 let refreshes = 0;

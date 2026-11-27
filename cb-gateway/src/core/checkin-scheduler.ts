@@ -54,7 +54,7 @@ function pendingAccounts(today: string) {
   for (const channel of channels) {
     if (typeof channel.checkinClaimOf !== 'function') continue;
     for (const account of accountsOf(channel.id)) {
-      // 只给 `ready` 的号签：`cooldown` 时再打一次只会让恢复时间更远。
+      // 只给 `ready` 的号签：`invalid` / `disabled` 的号打过去只会多一条失败。
       if (account.status !== 'ready') continue;
       const last = channel.lastCheckinOf?.(account) ?? null;
       if (settledForToday(last, today)) continue;

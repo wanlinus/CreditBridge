@@ -16,7 +16,6 @@ export interface AccountDetail {
     label: string;
     status: string;
     statusMessage: string | null;
-    cooldownUntil: number | null;
     profile: { uid?: string | null; username?: string | null; domain?: string | null } | null;
     createdAt: number;
     /** 凭据的**存在性**，不是内容。 */

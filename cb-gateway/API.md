@@ -35,7 +35,7 @@
 |---|---|
 | `message` | 给人看的，**必须能直接行动**（「去 /accounts 重新登录」而不是「unauthorized」） |
 | `type` | `unauthorized` / `forbidden` / `not_found` / `bad_request` / `gateway_error` / `upstream_error` |
-| `code` | 可选，机器可读的细分（`model_not_found`、`account_cooldown`、`workbuddy_401`…） |
+| `code` | 可选，机器可读的细分（`model_not_found`、`account_invalid`、`workbuddy_401`…） |
 
 ### 认证失败
 
@@ -60,7 +60,7 @@
 
 ### 时间
 
-所有时间戳都是**毫秒整数**（`createdAt` / `lastUsedAt` / `cooldownUntil` / `expireAt`）。
+所有时间戳都是**毫秒整数**（`createdAt` / `lastUsedAt` / `expireAt`）。
 账本的 `ts` 也是毫秒——它存在 `usage_record` 表里，形状和 API 一致。
 
 ---
@@ -95,7 +95,7 @@
 | `reasoning` / `input` | 非标准，给 DSH 生成 `reasoningEfforts` / `input` 用 |
 | `reasoningEfforts` / `defaultReasoningEffort` | 非标准、可选。上游**实际支持**的档位名（如 `["none","low","medium","high","xhigh"]`）和默认档。只有通道能逐个模型拿到档位表时才报（目前是 Loomy 的 `reasoning_efforts` / `default_reasoning_effort`）；缺省表示「沿用客户端默认档位表」。**别补一套标准档**——写了上游不认的档，请求不会报错，只会静默按默认档跑 |
 | `owned_by` | 通道 id（不是 idPrefix） |
-| `accountStatus` | 非标准：`ready` / `cooldown` / `invalid` / `disabled`。账号失效时 id **仍在**列表里，只有删账号才消失 |
+| `accountStatus` | 非标准：`ready` / `invalid` / `disabled`。账号失效时 id **仍在**列表里，只有删账号才消失 |
 
 取不到目录的账号被**跳过**（未登录、CLI 没装、上游拒绝），不 5xx。
 
@@ -158,7 +158,6 @@ Trae 只肯流式返回，非流式是网关在本地聚合出来的。
 | 情况 | 状态 | `code` |
 |---|---|---|
 | 模型 id 形状不对 / 账号不存在 / 通道不认识 | 404 | `model_not_found` |
-| 账号 `cooldown` | 429 | `account_cooldown` |
 | 账号 `invalid` / `disabled` | 503 | `account_invalid` / `account_disabled` |
 | 上游 4xx | 原样 | `trae_401`、`workbuddy_429`… |
 | 上游 5xx / 传输失败 | 502 | `<通道>_transport` |
@@ -169,7 +168,7 @@ Trae 只肯流式返回，非流式是网关在本地聚合出来的。
 | 触发 | 改成 | 说明 |
 |---|---|---|
 | 上游 401 | `invalid` | 凭据被上游拒了 |
-| 上游 429 | 不改账号，只冷却**这个模型** | 上游的限流是按模型的，换同号别的模型照样能用 |
+| 上游 429 | **不改账号状态** | 上游限流按模型，恢复时间网关猜不准，原样回给客户端自己退避 |
 | `credential_expired` | `invalid` | refreshToken 过期/被拒，或通道压根没有刷新机制（Loomy）。刷多少次都是同一结果 |
 | `credential_unavailable` | **不动** | 网络断了、上游 5xx。一次抖动不该把号封成失效 |
 | 其余 4xx / 5xx | 不动 | 上游在说这次请求不行，不该记到账号头上 |
@@ -237,7 +236,6 @@ Trae 只肯流式返回，非流式是网关在本地聚合出来的。
       "label": "示例账号",
       "status": "ready",
       "statusMessage": null,
-      "cooldownUntil": null,
       "uid": "00000000-…",
       "username": "示例账号",
       "hasCredential": true,
@@ -278,7 +276,6 @@ Trae 只肯流式返回，非流式是网关在本地聚合出来的。
       "label": "示例账号",
       "status": "ready",
       "statusMessage": null,
-      "cooldownUntil": null,
       "profile": { "uid": "00000000-…", "username": "示例账号", "domain": "www.workbuddy.cn" },
       "createdAt": 1794292127304,
       "totalRemain": 1550,
@@ -369,7 +366,7 @@ Trae 只肯流式返回，非流式是网关在本地聚合出来的。
 ```
 
 - `label`：非空才生效（避免把名字改没）。
-- `status` 只接受 `disabled` / `ready`。`cooldown` / `invalid` 是网关根据上游反应写的，
+- `status` 只接受 `disabled` / `ready`。`invalid` 是网关根据上游反应写的，
   外部指定会 400——手动设一个「凭据失效」只会让人以为真坏了。
 
 ### `DELETE /api/accounts/:id`
@@ -388,7 +385,7 @@ Trae 只肯流式返回，非流式是网关在本地聚合出来的。
   "supported": true,
   "totalRemain": 1550,
   "packages": [{ "name": "CodeBuddy个人版国内运营裂变包", "limit": 500, "used": 500, "expireAt": 1794054125000 }],
-  "account": { "id": "wb-1", "label": "示例账号", "status": "ready", "statusMessage": null, "cooldownUntil": null, "uid": "00000000-…", "username": "示例账号", "tokenExpiresAt": "2026-12-09T13:03:36.206Z" },
+  "account": { "id": "wb-1", "label": "示例账号", "status": "ready", "statusMessage": null, "uid": "00000000-…", "username": "示例账号", "tokenExpiresAt": "2026-12-09T13:03:36.206Z" },
   "label": "WorkBuddy",
   "idPrefix": "wb",
   "checkin": { "date": "2026-11-10", "status": "already", "message": "今天已签到，请明天再来", "at": 1794292142807 },

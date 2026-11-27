@@ -204,7 +204,6 @@ const error = computed(
           <StatusBadge
             v-if="account"
             :status="account.status"
-            :cooldown-until="account.cooldownUntil"
             :title="account.statusMessage"
           />
           <span v-if="upstreamText" class="muted small">上游 {{ upstreamText }}</span>

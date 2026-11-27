@@ -75,8 +75,13 @@ export interface CatalogModel {
   reasoning?: unknown;
 }
 
-/** `cooldown` 是临时的（上游限流，到点回 `ready`），`invalid` 凭据坏了，`disabled` 用户停用；后两种模型 id 仍在列表里，请求时才报错。 */
-export type AccountStatus = 'ready' | 'cooldown' | 'invalid' | 'disabled';
+/**
+ * `invalid` 凭据坏了，`disabled` 用户停用；两种模型 id 仍在列表里，请求时才报错。
+ *
+ * **没有 `cooldown`**：上游 429 只回给客户端、不改账号状态（限流是按模型的，
+ * 恢复时间网关猜不准——2026-11-13 删掉了猜 5 分钟那套）。原先那一档从来没有生产者。
+ */
+export type AccountStatus = 'ready' | 'invalid' | 'disabled';
 
 export interface AccountProfile {
   uid?: string;
@@ -93,7 +98,6 @@ export interface Account {
   label: string;
   credential: any;
   status: AccountStatus;
-  cooldownUntil: number | null;
   statusMessage: string | null;
   profile: AccountProfile;
   /** 要不要自动签到，默认 `true`。和 `status: 'disabled'` 不是一回事：那个连对话也不走。 */
@@ -314,9 +318,6 @@ export interface Channel {
 
   configure?(ctx: ChannelContext): void;
 
-  /** 账号就绪后调一次（启动预热）。**不要在这里打上游账务接口**：那种「启动时悄悄失败」没人会看。 */
-  warmup?(account: Account): Promise<void>;
-
   /** 交互式登录，会阻塞几分钟，网关把它包成「后台任务 + 前端轮询」。`signal` 触发时要**立刻**关回调服务器，否则旧任务占着端口空转到超时。 */
   login?(options?: {
     onUrl?: (url: string) => void;
@@ -351,6 +352,6 @@ export interface Channel {
   /** 让上游注销这条会话。**只管上游、不碰本地账号**——删凭据从来不等于登出。 */
   logoutOf?(account: Account): Promise<void>;
 
-  /** 转发一次对话补全。失败抛 `UpstreamError` 带上游状态码：401 → 路由标 `invalid`，429 → 标 `cooldown`。 */
+  /** 转发一次对话补全。失败抛 `UpstreamError` 带上游状态码：401 → 路由标 `invalid`，其余不动（429 原样回给客户端）。 */
   chatAs(account: Account, request: ChatRequest): Promise<ChatOutcome>;
 }

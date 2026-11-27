@@ -1,9 +1,9 @@
 /**
  * 登录任务的轮询控制器。
  *
- * ## 为什么是轮询，而不是文档 §7.5 说的 SSE
+ * ## 为什么是轮询，而不是 SSE
  *
- * 那一节写的是「SPA 用 `EventSource('/api/events')`，轮询降级为兜底」。实测下来
+ * 早先的设计是「SPA 用 `EventSource('/api/events')`，轮询降级为兜底」。实测下来
  * **SSE 替代不了轮询**：`core/login-tasks.ts` 的 `emitLogin()` 只推
  * `{ type, channelId, taskId, state, loopback, message }`——**没有 `url`，也没有 `prompt`**。
  * 而这两样正是登录过程中唯一需要用户看见的东西。所以 SSE 最多省下 1.2 秒的延迟，

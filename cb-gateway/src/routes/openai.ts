@@ -7,7 +7,7 @@ import type { AppEnv } from '../app.ts';
 import type { ChatOutcome } from '../types.ts';
 import { log } from '../logger.ts';
 import { channels } from '../channels/index.ts';
-import { accountsOf, applyFailure, checkUsable, markInvalid, markReady } from '../core/accounts.ts';
+import { accountsOf, applyFailure, checkUsable, markInvalid } from '../core/accounts.ts';
 import { resolveModel, toExternalModel, unknownModelMessage } from '../core/router.ts';
 import { recordChatUsage } from '../ledger.ts';
 import { isCredentialError } from '../shared/credential-error.ts';
@@ -60,14 +60,15 @@ openaiRoutes.get('/models', async (c) => {
   return c.json(await modelListPayload());
 });
 
-// 对话入口。链路：解析 id（拆不出 404）→ 判账号状态（cooldown 429 / invalid 503 / disabled 503）→
+// 对话入口。链路：解析 id（拆不出 404）→ 判账号状态（invalid / disabled → 503）→
 // 通道转发 → 记账（`provider` + `account` + `model` 三段身份）→ 失败时按上游状态码改账号状态；
 // **不换号**——指定的语义就是「这个号」。
 openaiRoutes.post('/chat/completions', async (c) => {
   const parsed = await readJsonBody(c);
   if (!parsed.ok) {
     // `/v1/*` 是 OpenAI 协议入口，`type` 保持 `gateway_error`（DSH 看到不认识的 type 会当成未知错误）。
-    return c.json({ error: { message: parsed.message, type: 'gateway_error' } }, 400);
+    // 超限回 413：那是「这个包太大」，和「JSON 写坏了」不是一回事。
+    return c.json({ error: { message: parsed.message, type: 'gateway_error' } }, parsed.tooLarge ? 413 : 400);
   }
   const body = parsed.body;
 
@@ -84,10 +85,8 @@ openaiRoutes.post('/chat/completions', async (c) => {
 
   const gate = checkUsable(account);
   if (!gate.ok) {
-    return c.json(
-      { error: { message: gate.message, type: 'gateway_error', code: gate.code } },
-      gate.code === 'account_cooldown' ? 429 : 503,
-    );
+    // 只剩 invalid / disabled 两种：都是「这个号现在不能发请求」，回 503。
+    return c.json({ error: { message: gate.message, type: 'gateway_error', code: gate.code } }, 503);
   }
 
   // 上游只认裸 id：账号段和通道前缀是网关自己的寻址方式。
@@ -147,21 +146,19 @@ openaiRoutes.post('/chat/completions', async (c) => {
     const code = typeof error?.code === 'string' ? error.code : 'gateway_error';
     const message = error?.message || String(error);
     log(`chat failed account=${account.id} model=${modelId} status=${status}: ${message.slice(0, 300)}`);
-    const retryAt = typeof error?.retryAt === 'number' ? error.retryAt : null;
     if (isCredentialError(error) && error.permanent) {
       // **这个号再也刷不出凭据了**，必须标 `invalid`。早先这类错误一律走 502、不改账号状态，
       // 于是账号永远显示「就绪」，用户看到「模型都在列表里，点哪个都报错」而管理台毫无提示。
       // 只认 `permanent`：网络抖动、上游 5xx 也是 502，那种不该把号封成失效。
       markInvalid(account.id, message);
     } else if (status === 429) {
-      // **429 只让账号保持可用，不记任何模型级状态。** 上游限流是按模型的，但「什么时候恢复」
-      // 网关不知道：WorkBuddy 不发 `Retry-After`，真实时间只写在中文 `msg` 里。2026-11-10 曾为此
-      // 加过 `core/model-cooldown.ts`（落盘记 5 分钟兜底），2026-11-13 删了——那个 5 分钟是猜的，
-      // 而且它在转发**之前**直接 429（上游其实已恢复也照样拒），「成功就清冷却」永远不可达。
-      // 现在如实把上游的 429 原样回给客户端，由客户端自己退避。
-      if (account.status === 'cooldown') markReady(account.id);
+      // **429 不改账号状态**：上游限流是按模型的，恢复时间网关猜不准（WorkBuddy 连
+      // `Retry-After` 都不发，真实时间只写在中文 `msg` 里）。2026-11-10 曾为此加过
+      // `core/model-cooldown.ts`（落盘猜 5 分钟），2026-11-13 删了——猜出来的时间在转发
+      // **之前**就拦请求，上游其实已恢复也照样拒。现在如实原样回给客户端，由它自己退避。
+      // 不再 `markReady` 收尾：账号根本没有 `cooldown` 这一档了。
     } else {
-      applyFailure(account, status, message, retryAt);
+      applyFailure(account, status, message);
     }
     // 失败当场记：用量要么没有、要么就是已经进了这个回调。
     bookUsage(status);

@@ -32,7 +32,7 @@ export const jsonActionRoutes = new Hono<AppEnv>();
 /** 登录（SPA 用）。不区分「用户名错」和「密码错」——那会告诉攻击者「这个用户名存在」。 */
 jsonActionRoutes.post('/api/login', async (c) => {
   const parsed = await readJsonBody(c);
-  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, 400);
+  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, parsed.tooLarge ? 413 : 400);
   const username = typeof parsed.body?.username === 'string' ? parsed.body.username : '';
   const password = typeof parsed.body?.password === 'string' ? parsed.body.password : '';
   if (!verifyPassword(username, password)) {
@@ -69,7 +69,7 @@ jsonActionRoutes.post('/api/logout', (c) => {
 /** 改密。强制改密和常规改密是**同一条**——`passwordGate` 只管「改了没」。**改密不换 key**：`api_key` 表和密码是两套独立凭据。 */
 jsonActionRoutes.post('/api/password', async (c) => {
   const parsed = await readJsonBody(c);
-  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, 400);
+  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, parsed.tooLarge ? 413 : 400);
   const current = typeof parsed.body?.current === 'string' ? parsed.body.current : '';
   const next = typeof parsed.body?.next === 'string' ? parsed.body.next : '';
   const confirm = typeof parsed.body?.confirm === 'string' ? parsed.body.confirm : '';
@@ -88,7 +88,7 @@ jsonActionRoutes.post('/api/password', async (c) => {
 // 最坏是多跑几次 scrypt）。`updateConfig()` 内部有白名单，未知键会被拒。
 jsonActionRoutes.patch('/api/config', async (c) => {
   const parsed = await readJsonBody(c);
-  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, 400);
+  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, parsed.tooLarge ? 413 : 400);
 
   const patch: Record<string, unknown> = {};
   if (parsed.body?.checkinTime !== undefined) {
@@ -153,7 +153,7 @@ jsonActionRoutes.patch('/api/accounts/:id/checkin-switch', async (c) => {
     return c.json({ error: { message: '这个通道不支持签到', type: 'bad_request' } }, 400);
   }
   const parsed = await readJsonBody(c);
-  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, 400);
+  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, parsed.tooLarge ? 413 : 400);
   const enabled = parsed.body?.enabled;
   if (typeof enabled !== 'boolean') {
     return c.json({ error: { message: 'enabled 必须是布尔值', type: 'bad_request' } }, 400);

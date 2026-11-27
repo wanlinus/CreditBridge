@@ -93,7 +93,7 @@ check('未知页面 → 壳', (await fetch(base + '/nope')).status, 200);
 // ---- 5. 账号动作 ----
 check('改名生效', (await (await fetch(base + `/api/accounts/${demo.id}`, { method: 'PATCH', headers: { ...bearer, 'content-type': 'application/json' }, body: JSON.stringify({ label: '改名了' }) })).json()).account.label, '改名了');
 check('停用生效', (await (await fetch(base + `/api/accounts/${demo.id}`, { method: 'PATCH', headers: { ...bearer, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'disabled' }) })).json()).account.status, 'disabled');
-check('不能手动设 cooldown', (await fetch(base + `/api/accounts/${demo.id}`, { method: 'PATCH', headers: { ...bearer, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'cooldown' }) })).status, 400);
+check('不能手动设 invalid', (await fetch(base + `/api/accounts/${demo.id}`, { method: 'PATCH', headers: { ...bearer, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'invalid' }) })).status, 400);
 
 const accountsApi = await (await fetch(base + '/api/accounts', { headers: bearer })).json();
 check('/api/accounts 带能力位', ['canLogin', 'canLogout', 'canRotateDevice', 'canVerify', 'opensWindow'].every((k) => typeof accountsApi.channels[0][k] === 'boolean'));

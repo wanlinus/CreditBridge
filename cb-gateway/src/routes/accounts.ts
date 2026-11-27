@@ -48,7 +48,6 @@ accountsRoutes.get('/api/accounts', async (c) => {
         label: account.label,
         status: account.status,
         statusMessage: account.statusMessage,
-        cooldownUntil: account.cooldownUntil,
         profile: account.profile,
         createdAt: account.createdAt,
         // ---- 积分（官方口径，只读。各通道的叫法和重置规则都不同，**不可跨通道相加**）----
@@ -104,7 +103,7 @@ accountsRoutes.post('/api/accounts/:channel/login/:taskId/answer', async (c) => 
   const channelId = c.req.param('channel');
   const taskId = c.req.param('taskId');
   const parsed = await readJsonBody(c);
-  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, 400);
+  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, parsed.tooLarge ? 413 : 400);
   const value = typeof parsed.body.value === 'string' ? parsed.body.value.trim() : '';
   if (!value) return c.json({ error: { message: '需要一个 value', type: 'bad_request' } }, 400);
   if (!getLoginTask(channelId, taskId)) {
@@ -140,7 +139,7 @@ accountsRoutes.patch('/api/accounts/:id', async (c) => {
   const found = accountWithChannel(c.req.param('id'));
   if (!found) return c.json({ error: { message: `没有账号 ${c.req.param('id')}`, type: 'not_found' } }, 404);
   const parsed = await readJsonBody(c);
-  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, 400);
+  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, parsed.tooLarge ? 413 : 400);
   const body = parsed.body;
   if (typeof body.label === 'string' && body.label.trim() !== '') {
     updateAccount(found.account.id, { label: body.label.trim() });
@@ -149,7 +148,7 @@ accountsRoutes.patch('/api/accounts/:id', async (c) => {
     if (body.status === 'disabled' || body.status === 'ready') {
       setStatus(found.account.id, body.status, { message: body.status === 'disabled' ? '管理台手动停用' : undefined });
     } else {
-      // cooldown / invalid 是网关自己根据上游反应写进去的，不接受外部直接指定——手动设一个「凭据失效」只会让人以为真坏了。
+      // `invalid` 是网关按上游反应写的，不接受外部直接指定——手动设一个「凭据失效」只会让人以为真坏了。
       return c.json({ error: { message: `不能把账号状态直接设成 ${body.status}`, type: 'bad_request' } }, 400);
     }
   }
@@ -183,7 +182,6 @@ accountsRoutes.get('/api/accounts/:id', (c) => {
       label: account.label,
       status: account.status,
       statusMessage: account.statusMessage,
-      cooldownUntil: account.cooldownUntil,
       profile: account.profile,
       createdAt: account.createdAt,
       // 凭据的**存在性**，不是内容：token/密钥绝不能出现在任何 JSON 响应里。

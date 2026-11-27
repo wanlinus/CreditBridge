@@ -245,14 +245,15 @@ function readChunk(data: any): { text: string; thinking: string; error: Upstream
   return out;
 }
 
-/** 上游错误码 → `UpstreamError`。**风控码必须映射成 429**，标 cooldown 而不是 invalid。 */
+/** 上游错误码 → `UpstreamError`。**风控码必须映射成 429**（不改账号状态），映射成 401 会把号标成 invalid。 */
 function upstreamErrorOf(data: any): UpstreamError | null {
   const code = Number(data?.error_code);
   if (!Number.isFinite(code) || code === 0) return null;
   const message = String(data?.error_msg || data?.message || `上游错误 ${code}`);
 
   // 风控统一走 `risk-control.ts` 的码表：710022004 的 error_msg 写的是 "rate limited"，
-  // 但 decision 里是 shark_admin/verify，是风控不是限流。按 429 处理，账号标 cooldown。
+  // 但 decision 里是 shark_admin/verify，是风控不是限流。按 429 处理（账号状态不动），
+  // 映射成 401 会把号误标成 invalid。
   const risk = riskControlOf(data);
   if (risk) return riskControlError(risk, '对话');
 

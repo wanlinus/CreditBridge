@@ -25,7 +25,7 @@ db.exec('PRAGMA synchronous = NORMAL');
 db.exec('PRAGMA foreign_keys = ON');
 
 /** 当前 schema 版本。加表/改列时 +1，并在 `MIGRATIONS` 里追加一段。 */
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 /** 按版本顺序排列的迁移，数组下标 = 从哪个版本升上来的。**不加 `IF NOT EXISTS`**：那会掩盖「版本号和实际结构不一致」；不做 down migration，回滚就是删库重来。 */
 const MIGRATIONS: string[] = [
@@ -168,6 +168,13 @@ const MIGRATIONS: string[] = [
     fetched_at INTEGER NOT NULL,
     PRIMARY KEY (channel_id, field)
   );
+  `,
+
+  // v5：删掉 `account.cooldown_until`。`cooldown` 这一档从来没有生产者——上游 429 原样回给
+  // 客户端、不改账号状态（见 `core/accounts.ts` 的 `applyFailure`），于是这列和它对应的
+  // 状态位、`GateCode`、前端四档色全是死的。留着只会让下一个人以为限流会落库。
+  `
+  ALTER TABLE account DROP COLUMN cooldown_until;
   `,
 ];
 

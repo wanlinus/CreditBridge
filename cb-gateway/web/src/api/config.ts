@@ -6,7 +6,7 @@
  */
 import { api, request } from './client';
 
-/** `GET /api/health` 的形状。只抄骨架用到的字段，其余按需补（§13 讨论漂移风险）。 */
+/** `GET /api/health` 的形状。只抄骨架用到的字段，其余按需补。**别照抄整个接口**：网关加字段时这里不该跟着改。 */
 export interface Health {
   ok: boolean;
   gateway: string;
@@ -49,7 +49,6 @@ interface HealthAccount {
   label: string;
   status: string;
   statusMessage: string | null;
-  cooldownUntil: number | null;
   uid: string | null;
   username: string | null;
   hasCredential: boolean;

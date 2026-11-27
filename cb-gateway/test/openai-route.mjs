@@ -157,8 +157,8 @@ const legacy = await (await app.request('/v1/chat/completions', chatInit({ model
 check('旧格式的报错里给出新写法', legacy.error.message.includes('wb-'), true);
 check('非法 JSON → 400', (await app.request('/v1/chat/completions', { method: 'POST', headers: { ...bearer, 'content-type': 'application/json' }, body: '{oops' })).status, 400);
 
-section('9. 429 原样回给客户端，账号保持 ready，且不换号');
-// 上游 429 按模型限：网关不再记模型级冷却、不换号重试，如实转发（Retry-After 猜不准）。
+section('9. 429 原样回给客户端，账号状态不动，且不换号');
+// 上游 429 按模型限：网关不记冷却、不换号重试，如实转发（Retry-After 猜不准）。
 const { UpstreamError } = await import('../src/shared/upstream-error.ts');
 let attempts = 0;
 fake.chatAs = async () => {
@@ -168,7 +168,7 @@ fake.chatAs = async () => {
 const limited = await app.request('/v1/chat/completions', chatInit({ model: 'wb-1/hy4free', messages: [] }));
 check('429 → 429', limited.status, 429);
 check('只打了一次上游（不换号）', attempts, 1);
-check('账号没有标 cooldown', accounts.getAccount('wb-1').status, 'ready');
+check('账号仍是 ready（429 不落到账号状态上）', accounts.getAccount('wb-1').status, 'ready');
 check('429 的错误码原样透传', (await limited.json()).error.code, 'rate_limited');
 
 const retried = await app.request('/v1/chat/completions', chatInit({ model: 'wb-1/hy4free', messages: [] }));

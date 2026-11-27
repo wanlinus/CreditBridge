@@ -7,6 +7,7 @@
 import type { Account, Channel } from '../types.ts';
 import { buildCredits } from './credits.ts';
 import { usageAccountToday } from '../store/usage.ts';
+import { beijingMidnight, beijingToday } from '../shared/clock.ts';
 
 /** `GET /api/accounts/<id>/badge` 的响应体。 */
 export interface BadgeView {
@@ -53,13 +54,14 @@ function fmtSize(n: number): string {
  * 最近 20 条、模型聚合、缓存推算、DeepSeek 折合费用**徽标一个都不读**。
  * 换成一条窄 SQL（`usageAccountToday`）后实测 **0.033ms**，差 150 倍。
  *
- * 口径必须和 `usageSummary().today` 一致：同一个窗口（本地今天 0 点起）、token 都是
+ * 口径必须和 `usageSummary().today` 一致：同一个窗口（**北京时间的今天 0 点**起，不是进程
+ * 本地时间——容器 `TZ=Asia/Shanghai` 时两者碰巧相等，UTC 下差 8 小时）、token 都是
  * `prompt + completion`、`credit` 按 0 相加。`test:badge` 钉住这三条。
  */
 export async function buildBadge(channel: Channel, account: Account): Promise<BadgeView> {
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const todaySince = startOfToday.getTime();
+  // **「今天」按北京时间定**，和 `usageSummary().today` 同一个窗口。用本地 `setHours` 在 UTC
+  // 进程里会偏 8 小时，徽标和概览页的「今日」就会对不上——两个数都不会报错。
+  const todaySince = beijingMidnight(beijingToday());
 
   const [credits, today] = await Promise.all([
     buildCredits(channel, account),

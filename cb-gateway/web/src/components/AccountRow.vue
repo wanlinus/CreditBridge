@@ -170,7 +170,7 @@ async function remove(): Promise<void> {
       </button>
 
       <span v-if="upstreamText" class="upstream" :title="`上游身份：${upstreamText}`">{{ upstreamText }}</span>
-      <StatusBadge :status="account.status" :cooldown-until="account.cooldownUntil" :title="account.statusMessage" />
+      <StatusBadge :status="account.status" :title="account.statusMessage" />
 
       <span class="grow" />
 

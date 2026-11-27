@@ -184,11 +184,10 @@ CreditBridge/
 │  │  └─ shared/                  paths · sse · 定价 · 可见性 · 网关凭据
 │  ├─ web/                       前端 SPA（Vue 3 + Vite）
 │  ├─ scripts/deploy.ps1         拉 GHCR 镜像 → 重建容器
-│  ├─ test/                      19 套，`npm test` 全跑
+│  ├─ test/                      21 套，`npm test` 全跑
 │  └─ data/                      凭据、账号、签到、用量、日志（明文 token，勿提交）
 ├─ cb-dsh/                       DSH 插件（host 半边 + client 半边）
 ├─ docs/                         添加通道指南等
-├─ packaging/                    打包脚本
 ├─ tools/                        开发诊断脚本
 └─ private/                      **不发布**（.gitignore）
    ├─ docs/                      逆向记录、重构方案
@@ -206,7 +205,8 @@ CreditBridge/
 - [AGENTS.md](AGENTS.md) — 改代码前的约定（架构原则、平台坑、提交规范）
 
 > `private/` 不在公开仓库里。源码注释里 `private/docs/xxx.md` 的引用指向作者本地的笔记，
-> clone 下来点不开是正常的。
+> clone 下来点不开是正常的。`private/` 自己是一个独立的本地 git 仓库（只跟踪 `docs/` 和
+> `tools/`，忽略解包产物），与外层仓库互不干扰。
 
 ## 开发
 
@@ -225,7 +225,7 @@ pnpm --dir web build:only
 # 检查 + 测试
 npm run check        # tsc --noEmit，必须 0 error
 npm run check:web    # vue-tsc
-npm test             # 19 套，一条命令全跑
+npm test             # 21 套，一条命令全跑
 ```
 
 > **`npm test` 依赖 `web/dist`**：`test/e2e-http.mjs` 要验证静态资源能被托管。
@@ -254,8 +254,8 @@ PR 只构建不推送。
 - **Trae 登录需要环回回调**：回调必须是 `http://127.0.0.1:18801/authorize`。
   从容器外登录那次要开隧道：`ssh -N -L 18801:127.0.0.1:18801 <用户>@<网关地址>`。
   入口页必须是 `/login?...` 而不是 `/authorization?...`。
-- **Trae 的单次消耗是算出来的**：它不回报单次积分，网关在请求结束后读计数器做差，
-  账本那一行会晚几秒落盘，偶尔缺 `credit`。
+- **Trae 不回报单次积分**：它的 SSE 只报 token，账本里那一行的 `credit` 恒为 `null`。
+  积分只读官方余额，网关不做逐请求结算。
 - **上下文窗口和思考强度只在网关设**：DSH 的模型 schema 只有单值 `contextWindow`。
   在 `/models` 页改，插件负责把 `/api/models` 照抄进 profile。
 - **Qoder 的缓存命中率是推算的**：它不报 `cached_tokens`。费用折算按其他通道的实测率推算，
@@ -270,7 +270,7 @@ PR 只构建不推送。
 | `404 没有账号 wb-9` | 模型 id 里的账号不存在。去 `/accounts` 看现有账号 |
 | `404 不认识模型 id "workbuddy/hy4free"` | 这是 v1 的旧格式。现在是 `wb-1/hy4free` |
 | 模型列表为空 | `/accounts` 里一个号都没有，或者号的状态不是 `ready` |
-| `429 账号 wb-1 限流中` | 上游按模型限流，状态机自动冷却、到点恢复。急用就换一个号的模型 |
+| `429 账号 wb-1 限流中` | 上游按模型限流。网关不拦、原样转发，客户端自己退避；账号状态不变 |
 | `503 账号 wb-1 的凭据已失效` | 上游回 401。去 `/accounts` 点「重新登录」 |
 | 容器一直 unhealthy | `host` 不是 `0.0.0.0`，或 `data/` 卷权限不对（容器以 uid 1000 写） |
 | 改了源码没生效 | 镜像没更新。等 CI 构建完，然后 `docker compose pull && docker compose up -d` |

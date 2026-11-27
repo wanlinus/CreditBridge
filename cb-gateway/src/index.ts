@@ -11,7 +11,7 @@ import { applyCachedIdentities, setVersionsLogger } from './core/channel-version
 import { hasAnyCredential } from './core/keys.ts';
 import { createApp } from './app.ts';
 import { restrictAuthDirPermissions } from './shared/data-permissions.ts';
-import { setShutdownHandler, startParentWatchdog, warmupChannels } from './lifecycle.ts';
+import { setShutdownHandler, startParentWatchdog, reportStartupState } from './lifecycle.ts';
 
 configureLogger({ verbose: config.verbose });
 
@@ -39,7 +39,7 @@ const server = serve({ fetch: app.fetch, port: config.port, hostname: config.hos
   if (!hasAnyCredential()) {
     log('还没有任何 API key：DSH 和脚本调用会 401。打开 /login 登录后去 /keys 建一把。');
   }
-  warmupChannels();
+  reportStartupState();
   startParentWatchdog(server);
 });
 

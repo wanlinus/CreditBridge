@@ -107,9 +107,7 @@ if (!fs.existsSync(PROFILE)) {
   //
   // 结论：**DSH 只从 profile 的 settings 文档读模型，不会向 baseURL 发现**。
   // v2 的 `models:` 段由插件 host 半边每 15 秒从网关 `/api/models` 拉取后写入
-  // （`cb-dsh/lib/profile-models.js`），是「生成配置」而不是「运行时发现」；
-  // v1 时代这个活儿是 `tools/sync-profile-models.mjs` 干的，现在它按通道拉的
-  // `<通道>/v1/models` 已经 404。
+  // （`cb-dsh/lib/profile-models.js`），是「生成配置」而不是「运行时发现」。
   //
   // 所以检查应该是：provider 的 `models:` 段在不在。v2 是聚合 provider（`baseURL`
   // 路径正好 `/v1`），它下面挂的是所有通道的所有模型；有没有 models 段由插件同步
@@ -136,7 +134,7 @@ if (!fs.existsSync(PROFILE)) {
   }
 
   // 问一次网关 /api/health 拿账号就绪情况。拿不到就只做「有没有 models 段」的提示，不误判。
-  // 凭据从插件配置读（和 sync-profile-models.mjs 同一套）；只认 apiToken，Basic 已删。
+  // 凭据从插件配置读；只认 apiToken，Basic 已删。
   //
   // **v2 的 /api/health 没有 ready 字段**：`channels[id]` 里是通道元数据，登录态在顶层
   // `accounts` 数组的 `status` 上。早先这里读 `ready[provider.name].ready`，在 v2 恒为

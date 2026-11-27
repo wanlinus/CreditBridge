@@ -3,6 +3,7 @@
 import type { Account, Channel, CheckinRecord, UsagePackage } from '../types.ts';
 import { channelById } from '../channels/index.ts';
 import { usageAccountTokens } from '../store/usage.ts';
+import { beijingMidnight, beijingToday } from '../shared/clock.ts';
 
 /** 挡住密集轮询，又不至于让签到后的手动刷新看不出变化。**失败不进缓存**。 */
 const CREDITS_TTL_MS = 30_000;
@@ -119,7 +120,6 @@ function accountMeta(account: Account) {
     label: account.label,
     status: account.status,
     statusMessage: account.statusMessage,
-    cooldownUntil: account.cooldownUntil,
   };
 }
 
@@ -132,9 +132,11 @@ export async function accountsWithSpend(accounts: Account[]): Promise<{
   tokensToday: Record<string, number>;
   tokensTotal: Record<string, number>;
 }> {
-  const startOfToday = new Date();
-  startOfToday.setHours(0, 0, 0, 0);
-  const todaySince = startOfToday.getTime();
+  // **「今天」按北京时间定**，和 `ledger.ts` / SQL 的 `+8 hours` 同一个口径。
+  // 用本地 `setHours(0,0,0,0)` 在 UTC 进程里会偏 8 小时——那是 2026-11-26 在 CI 上
+  // 把 `usage-daily` 干红 14 项的原因。现在容器 `TZ=Asia/Shanghai` 碰巧对得上，
+  // 但不能靠部署配置兜住代码口径。
+  const todaySince = beijingMidnight(beijingToday());
   // 和 `usageSummary()` 的 `WINDOW_DAYS` 必须一致（30 个本地日历日，含今天）。两处口径分叉
   // 的话，账号列表页的「近 30 天」和概览页会对不上，而两个数都不会报错。
   const windowSince = todaySince - 29 * 86400000;

@@ -40,8 +40,14 @@ export function startParentWatchdog(server: any) {
   timer.unref?.();
 }
 
-/** 监听成功后的预热。**只读本地状态，不发网络请求**——启动时打一遍上游只会让冷启动变慢、把日志刷满；要验活去管理台点「检测」。顺便把签到调度起起来（每天到 `checkinTime` 点跑一次，不是轮询）。 */
-export function warmupChannels() {
+/**
+ * 启动后的收尾：打印每个通道挂了哪些号，然后起签到调度（每天到 `checkinTime` 点跑一次，不是轮询）。
+ *
+ * **不打上游**：启动时验活只会让冷启动变慢、把日志刷满，要验活去管理台点「检测」。
+ * 曾经这里还有个 `warmup()` 钩子给 Trae 垫账本基线（积分逐请求做差的年代），
+ * 那个机制 2026-11-13 删掉后钩子就没人实现了，一起删。
+ */
+export function reportStartupState() {
   for (const channel of channels) {
     const accounts = accountsOf(channel.id);
     if (accounts.length === 0) {
@@ -50,13 +56,6 @@ export function warmupChannels() {
     }
     const summary = accounts.map((account) => `${account.id}=${account.status}`).join(' ');
     log(`${channel.id} (${channel.idPrefix}) 账号 ${accounts.length} 个：${summary}`);
-    // 预热只对 ready 的号做：坏凭据的预热只会多一条 401。
-    for (const account of accounts) {
-      if (account.status !== 'ready' || typeof channel.warmup !== 'function') continue;
-      channel
-        .warmup(account)
-        .catch((error: any) => log(`${account.id} warmup failed: ${error.message}`));
-    }
   }
   startCheckinScheduler();
 }

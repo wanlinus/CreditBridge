@@ -17,7 +17,7 @@ keysRoutes.get('/api/keys', (c) => {
 
 keysRoutes.post('/api/keys', async (c) => {
   const parsed = await readJsonBody(c);
-  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, 400);
+  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, parsed.tooLarge ? 413 : 400);
   const { record, secret } = createKey(typeof parsed.body.label === 'string' ? parsed.body.label : '');
   log(`新建 API key ${record.id} (${record.prefix}…) label=${record.label}`);
   // 明文只在这一次响应里出现。调用方是浏览器或脚本，谁拿到谁负责别打日志。
@@ -26,7 +26,7 @@ keysRoutes.post('/api/keys', async (c) => {
 
 keysRoutes.patch('/api/keys/:id', async (c) => {
   const parsed = await readJsonBody(c);
-  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, 400);
+  if (!parsed.ok) return c.json({ error: { message: parsed.message, type: 'bad_request' } }, parsed.tooLarge ? 413 : 400);
   const next = updateKey(c.req.param('id'), {
     label: typeof parsed.body.label === 'string' ? parsed.body.label : undefined,
     enabled: typeof parsed.body.enabled === 'boolean' ? parsed.body.enabled : undefined,

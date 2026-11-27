@@ -56,7 +56,8 @@ export function recordChatUsage(
     model,
     // `effort` 记的是**通道实际发出去的那个值**（Trae 是 light/high/extra_high，WorkBuddy 是 low/medium/high/xhigh/max），所以这一列只能横向比同一通道内的变化。
     effort,
-    // `credit` 取上游报的单次成本。Trae 不报，由通道读账号计数器做差补上，所以偶尔会有几行是空的。
+    // `credit` 只取上游报的单次成本。Trae / WorkBuddy 根本不报，所以它们的行恒为 `null`——
+    // 积分不在这里逐请求结算，只读官方余额（2026-11-13 起，见 ADR-8/9）。
     credit: typeof usage?.credit === 'number' ? usage.credit : null,
     promptTokens: usage?.prompt_tokens ?? null,
     completionTokens: usage?.completion_tokens ?? null,
